@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Copy, Minus, Square, Wrench, X } from "lucide-react";
 import { useI18n } from "../i18n/context";
+import InterfaceZoom from "./InterfaceZoom";
 
 const btn =
   "flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-ink transition-colors hover:bg-panel-hover";
@@ -72,6 +73,7 @@ export default function WindowControls({ sidebarOpen, onToggleSidebar }: WindowC
 
   return (
     <>
+      <InterfaceZoom />
       {/* 仅覆盖工具栏右侧空白区，避免拦截 iframe 内的任务菜单等交互控件。 */}
       <div
         data-tauri-drag-region

@@ -21,6 +21,7 @@
     "core:window:allow-unminimize",
     "core:window:allow-unmaximize",
     "core:window:allow-start-dragging",
+    "core:webview:allow-set-webview-zoom",
     "opener:default",
     "opener:allow-open-url",
     "opener:allow-default-urls",

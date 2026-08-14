@@ -65,6 +65,9 @@ export interface Translations {
     restore: string;
     close: string;
     drag_window: string;
+    zoom_level: string;
+    zoom_minimum: string;
+    zoom_maximum: string;
     waiting_logs: string;
     install_log: string;
   };
