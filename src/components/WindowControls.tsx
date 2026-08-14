@@ -17,7 +17,7 @@ interface WindowControlsProps {
  * 参考 damn-reports 的自定义标题栏：去掉系统边框后，把窗口控制放到
  * 右侧侧边栏按钮所在的位置，内嵌 dsh 页面保持全窗口显示；
  * 半透明面板浮于其上并跟随 dsh 主题切换，视觉上与内部应用融为一体。
- * 左侧握把（data-tauri-drag-region="deep"）用于拖动窗口，双击可最大化。
+ * 中间偏右的空白区域用于拖动窗口，双击可最大化。
  */
 export default function WindowControls({ sidebarOpen, onToggleSidebar }: WindowControlsProps) {
   const { t } = useI18n();
@@ -72,9 +72,15 @@ export default function WindowControls({ sidebarOpen, onToggleSidebar }: WindowC
 
   return (
     <>
-      {/* 顶部整条拖拽区域：全宽覆盖窗口顶部，双击可最大化；按钮不在这层里 */}
-      <div data-tauri-drag-region className="fixed w-[410px] top-0 z-40 h-6" />
-      <div data-tauri-drag-region className="fixed inset-x-0 left-[410px] top-0 z-40 h-12" />
+      {/* 仅覆盖工具栏右侧空白区，避免拦截 iframe 内的任务菜单等交互控件。 */}
+      <div
+        data-tauri-drag-region
+        className="fixed top-0 z-40 h-12"
+        style={{
+          left: "max(720px, 50vw)",
+          width: "max(0px, calc(100vw - max(720px, 50vw) - 152px))",
+        }}
+      />
       <div className="fixed top-2 right-2 z-50">
       <div className="flex items-center gap-0.5 rounded-lg border border-line bg-panel/80 p-1 backdrop-blur-md">
         <button
