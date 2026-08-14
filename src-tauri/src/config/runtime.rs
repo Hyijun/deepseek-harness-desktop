@@ -2,18 +2,19 @@ use serde::Serialize;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 use super::constants::*;
 use super::format::get_dsh_service_url;
 use super::utils::search_node_binary;
 
-/// 获取 App Data 基础目录
-pub fn get_base_dir<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
-    app_handle
-        .path()
-        .app_data_dir()
-        .expect("Failed to resolve app data directory")
+/// 获取当前应用可执行文件所在的安装目录
+pub fn get_base_dir<R: Runtime>(_app_handle: &AppHandle<R>) -> PathBuf {
+    env::current_exe()
+        .expect("Failed to resolve current executable path")
+        .parent()
+        .expect("Current executable path has no parent directory")
+        .to_path_buf()
 }
 
 /// Node.js 运行时下载地址
@@ -186,7 +187,7 @@ pub fn get_dsh_data_path(app_handle: &tauri::AppHandle) -> PathBuf {
 }
 
 /// dsh 服务日志文件路径
-pub fn get_service_log_path(app_handle: &tauri::AppHandle) -> PathBuf {
+pub fn get_service_log_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     get_base_dir(app_handle).join("logs").join("dsh-web.log")
 }
 
@@ -270,21 +271,15 @@ pub struct RuntimeInfo {
 }
 
 pub fn runtime_info<R: Runtime>(app: &AppHandle<R>, port: u16) -> RuntimeInfo {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let base_dir = get_base_dir(app);
 
     RuntimeInfo {
         app_version: app.package_info().version.to_string(),
         dsh_version: get_dsh_version(app),
         node_version: get_active_node_version(),
         service_url: get_dsh_service_url(port),
-        data_dir: app_data_dir.clone(),
-        log_path: PathBuf::from(&app_data_dir)
-            .join("logs")
-            .join("dsh-web.log")
+        data_dir: base_dir.to_string_lossy().into_owned(),
+        log_path: get_service_log_path(app)
             .to_string_lossy()
             .into_owned(),
         platform: env::consts::OS.to_string(),

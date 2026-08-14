@@ -1,7 +1,7 @@
 use crate::config;
 use crate::service::download::{self, Installable};
 use crate::service::workflow;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -162,27 +162,24 @@ pub async fn copy_service_url(app_handle: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 在系统文件管理器中打开数据目录
+/// 在系统文件管理器中打开应用安装目录
 #[tauri::command]
 pub async fn reveal_data_dir(app_handle: AppHandle) -> Result<(), String> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let base_dir = config::get_base_dir(&app_handle);
 
     if cfg!(windows) {
         std::process::Command::new("explorer")
-            .arg(&app_data_dir)
+            .arg(&base_dir)
             .spawn()
             .map_err(|e| e.to_string())?;
     } else if cfg!(target_os = "macos") {
         std::process::Command::new("open")
-            .arg(&app_data_dir)
+            .arg(&base_dir)
             .spawn()
             .map_err(|e| e.to_string())?;
     } else {
         std::process::Command::new("xdg-open")
-            .arg(&app_data_dir)
+            .arg(&base_dir)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
