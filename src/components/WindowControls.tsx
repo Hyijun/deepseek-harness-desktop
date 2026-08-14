@@ -77,7 +77,7 @@ export default function WindowControls({ sidebarOpen, onToggleSidebar }: WindowC
       {/* 固定覆盖窗口右半边；窗口控制按钮使用更高层级，不受拖拽层影响。 */}
       <div data-tauri-drag-region className="fixed top-0 left-1/2 z-40 h-12 w-1/2" />
       <div className="fixed top-2 right-2 z-50">
-      <div className="flex items-center gap-0.5 rounded-lg border border-line bg-panel/80 p-1 backdrop-blur-md">
+      <div className="flex items-center gap-0.5 rounded-lg bg-panel/80 p-1 backdrop-blur-md">
         <button
           className={btn}
           onClick={onToggleSidebar}

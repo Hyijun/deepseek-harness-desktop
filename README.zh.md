@@ -11,36 +11,36 @@
 </p>
 
 <p align="center">
-  <a href="./README.md">English</a> · <strong>中文</strong>
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/version-0.1.8-4D6BFE?style=flat-square" alt="version 0.1.8" />
+  <img src="https://img.shields.io/github/v/release/hairyf/deepseek-harness-desktop?style=flat-square" alt="latest release" />
+  <img src="https://img.shields.io/github/downloads/hairyf/deepseek-harness-desktop/total?style=flat-square" alt="downloads" />
+  <img src="https://img.shields.io/github/stars/hairyf/deepseek-harness-desktop?style=flat-square" alt="GitHub stars" />
+  <img src="https://img.shields.io/github/license/hairyf/deepseek-harness-desktop?style=flat-square" alt="MIT license" />
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white" alt="Tauri 2" />
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT license" />
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-black?style=flat-square" alt="Windows | macOS | Linux" />
+  <img src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-black?style=flat-square" alt="Windows | macOS | Linux" />
 </p>
 
 <p align="center">
-  <img src="docs/preivew.png" width="720" alt="DeepSeek Harness Desktop 界面预览" />
+  <samp>
+    <a href="./README.md">English</a> ·
+    <strong>中文</strong>
+  </samp>
 </p>
 
 > **状态：开发预览。** 上游 `dsh` 仍在快速迭代，存在破坏性变更；本项目同步跟随。
 
 ## 功能
 
-| | |
-| --- | --- |
-| **一键安装** | 首次启动自动安装打包好的 Harness 发行版；若本机已存在版本兼容的 Node.js（v22.15.0+ / v23.8.0+）则直接复用，否则自动下载 Node.js 运行时，无需手动配置任何环境 |
-| **自动更新** | 每次启动对比已安装的 Harness 发行版与 [deepseek-harness-pkg](https://github.com/hairyf/deepseek-harness-pkg) 最新 release commit，不一致时自动重新下载，上游修复无需手动重装即可生效 |
-| **静默更新提示** | 已安装后再次启动会跳过安装界面直接进入 Harness，并在后台静默检查新版，发现后弹出轻量「立即更新 / 稍后」提示 |
-| **纯本地运行** | `dsh web` 服务运行在 `http://127.0.0.1:3080`，profile、会话与设置全部保存在本机 |
-| **隐私默认** | 隔离的 `$DSH_HOME`，默认关闭遥测（`DSH_TELEMETRY_DISABLED=1`） |
-| **原生窗口外壳** | 无边框窗口 + 自定义顶部拖拽栏与窗口控制（最小化 / 最大化 / 还原 / 关闭，双击最大化） |
-| **主题跟随** | 桌面外壳跟随 dsh 页面主题，侧边栏与窗口控制自动适配亮色 / 暗色 |
-| **内嵌 Web 界面** | 完整的 DeepSeek Harness 界面运行在原生窗口中，侧边栏提供版本信息、服务地址、端口、自启动、日志、连接状态以及重启 / 停止 / 浏览器打开 / 复制地址 / 打开数据目录 / 语言切换等操作 |
-| **跨平台** | Windows（NSIS/MSI）、macOS（DMG）、Linux（AppImage）安装包 |
-| **中英双语** | 界面支持中文与 English |
+- **一键安装** — 无需 Node.js / pnpm / Docker，内置 Harness 内核与 Node 运行时，首次启动全自动装配。
+- **自愈更新** — 每次启动自动同步最新版本，发现新版时静默弹出「立即更新 / 稍后」提示。
+- **轻量跨平台** — Tauri 2 外壳，安装包更小、内存占用更低；Windows / macOS / Linux 原生窗口，界面中英双语。
+- **内嵌 Web 界面** — Harness 界面运行在窗口内，侧边栏提供服务状态、端口、日志、自启动、浏览器打开、数据目录与语言等控制。
+
+> **为什么用 Tauri 而不是 Electron？** 相同功能下它更轻：更小的安装包、更低的内存占用、更跟手的原生窗口控制——对可能要常驻后台的本地 agent 尤为重要；内嵌的是系统 WebView2/WebKit 而非自带 Chromium，进一步缩小安装体积。
+
+## 界面预览
+
+![DeepSeek Harness Desktop](docs/preivew.png)
 
 ## 快速开始
 

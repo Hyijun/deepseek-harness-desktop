@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/hairyf/deepseek-harness-desktop">
-    <img src="public/favicon.svg" width="112" alt="DeepSeek Harness Desktop" />
+    <img src="public/favicon.svg" width="120" alt="DeepSeek Harness Desktop" />
   </a>
 </p>
 
@@ -11,36 +11,36 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="./README.zh.md">中文</a>
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/version-0.1.8-4D6BFE?style=flat-square" alt="version 0.1.8" />
+  <img src="https://img.shields.io/github/v/release/hairyf/deepseek-harness-desktop?style=flat-square" alt="latest release" />
+  <img src="https://img.shields.io/github/downloads/hairyf/deepseek-harness-desktop/total?style=flat-square" alt="downloads" />
+  <img src="https://img.shields.io/github/stars/hairyf/deepseek-harness-desktop?style=flat-square" alt="GitHub stars" />
+  <img src="https://img.shields.io/github/license/hairyf/deepseek-harness-desktop?style=flat-square" alt="MIT license" />
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white" alt="Tauri 2" />
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT license" />
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-black?style=flat-square" alt="Windows | macOS | Linux" />
+  <img src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-black?style=flat-square" alt="Windows | macOS | Linux" />
 </p>
 
 <p align="center">
-  <img src="docs/preivew.png" width="720" alt="DeepSeek Harness Desktop preview" />
+  <samp>
+    <strong>English</strong> ·
+    <a href="./README.zh.md">中文</a>
+  </samp>
 </p>
 
 > **Status: developer preview.** The upstream `dsh` is still iterating rapidly with compatibility-breaking changes; this project tracks it closely.
 
 ## Features
 
-| | |
-| --- | --- |
-| **One-click install** | On first launch the app installs the prebuilt Harness bundle and reuses a compatible local Node.js (v22.15.0+ / v23.8.0+) when present, otherwise downloads the bundled Node.js runtime — no manual setup. |
-| **Self-healing updates** | Each launch compares the installed bundle against the latest release commit from [deepseek-harness-pkg](https://github.com/hairyf/deepseek-harness-pkg) and re-downloads automatically when it differs, so upstream fixes ship without a manual reinstall. |
-| **Silent update prompt** | Once installed, launches skip the setup screens and boot straight into the harness, then check for a newer release in the background and show a small "Update Now / Later" prompt. |
-| **Runs 100% locally** | The `dsh web` service runs at `http://127.0.0.1:3080`. Profiles, sessions, and settings all live on your machine. |
-| **Privacy by default** | Isolated `$DSH_HOME` and telemetry disabled out of the box (`DSH_TELEMETRY_DISABLED=1`). |
-| **Native window shell** | A frameless window with a custom top drag bar and window controls (minimize / maximize / restore / close, double-click to maximize). |
-| **Theme-aware chrome** | The desktop shell follows the dsh page theme, so the sidebar and window controls adapt to light and dark themes. |
-| **Embedded web UI** | The complete DeepSeek Harness interface runs inside the native window, with a sidebar for version info, service address, port, auto-start, logs, connection status, and restart / stop / open-in-browser / copy URL / open data folder / language actions. |
-| **Cross-platform** | Installers for Windows (NSIS/MSI), macOS (DMG), and Linux (AppImage). |
-| **Bilingual UI** | The interface ships in Chinese and English. |
+- **One-click install** — No Node.js / pnpm / Docker needed; bundles the Harness kernel and a Node runtime with fully automatic first-run setup.
+- **Self-healing updates** — Syncs to the latest release on every launch, with a silent "Update Now / Later" prompt when a newer version is found.
+- **Lightweight & cross-platform** — A Tauri 2 shell with smaller installers and lower RAM; native windows on Windows / macOS / Linux with a bilingual UI.
+- **Embedded web UI** — The full Harness interface runs in-window, with a sidebar for service status, port, logs, auto-start, open in browser, data folder and language.
+
+> **Why Tauri and not Electron?** The same features run lighter: a smaller installer and lower idle RAM, with native window controls that stay snappy — important for a local agent host you may keep open all day. The embedded WebView2/WebKit (not a bundled Chromium) also shrinks the install footprint.
+
+## Preview
+
+![DeepSeek Harness Desktop](docs/preivew.png)
 
 ## Quick Start
 
@@ -50,7 +50,7 @@
 
 > First run requires a network connection. Everything after that runs locally. Once installed, later launches skip the setup screens and boot straight into the harness; a silent prompt appears when a newer Harness release is available.
 
-**Requirements**
+### Requirements
 
 - Windows 10+ (64-bit)
 - macOS 10.15+

@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #0b0b0e;
+  --color-panel: #121217;
+  --color-panel-2: #191921;
+  --color-panel-hover: #1f1f29;
+  --color-line: #23232c;
+  --color-line-strong: #34343f;
+  --color-ink: #ececf0;
+  --color-muted: #9b9ba6;
+  --color-accent: #4d6bfe;
+  --color-accent-2: #7b95ff;
+  --color-ok: #46a758;
+
+  --font-sans:
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui,
+    -apple-system, sans-serif;
+
+  --animate-fade-up: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade-in: fade-in 0.9s ease both;
+  --animate-glow: glow 5s ease-in-out infinite alternate;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes glow {
+    from {
+      opacity: 0.55;
+    }
+    to {
+      opacity: 0.95;
+    }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-canvas text-ink antialiased;
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(77, 107, 254, 0.35);
+}
+
+/* Subtle dark scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a33;
+  border-radius: 8px;
+  border: 2px solid #0b0b0e;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a46;
+}
+
+/* Scroll-reveal helpers */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .animate-fade-up,
+  .animate-fade-in,
+  .animate-glow {
+    animation: none;
+  }
+}
