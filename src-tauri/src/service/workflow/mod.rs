@@ -196,18 +196,24 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         let _ = Command::new("pkill").arg("-9").arg("node").output();
     }
 
-    // 构造环境变量：隔离的 $DSH_HOME + 隐私默认（关闭遥测）
+    // DSH_HOME 始终由桌面端控制；其余 DSH 环境变量来自持久化设置。
     let dsh_home = config::get_dsh_data_path(&app_handle);
     fs::create_dir_all(&dsh_home).map_err(|e| format!("create dsh home failed: {e}"))?;
     let mut envs: HashMap<String, String> = HashMap::new();
     envs.insert("DSH_HOME".to_string(), dsh_home.to_string_lossy().into_owned());
-    envs.insert("DSH_TELEMETRY_DISABLED".to_string(), "1".to_string());
-    envs.insert("NO_COLOR".to_string(), "1".to_string());
-    envs.insert("DSH_WEB_PORT".to_string(), setting.port.to_string());
+    for variable in &setting.dsh_environment {
+        if !variable.name.eq_ignore_ascii_case("DSH_HOME") {
+            envs.insert(variable.name.clone(), variable.value.clone());
+        }
+    }
 
-    // 扩展 PATH，让 dsh 及其子进程能找到 node
+    // 扩展 PATH，让 dsh 及其子进程能找到 node，同时保留用户配置的 PATH。
     if let Some(node_dir) = node_binary_path.parent() {
-        if let Some(existing_path) = std::env::var_os("PATH") {
+        let existing_path = envs
+            .get("PATH")
+            .map(|value| std::ffi::OsString::from(value.as_str()))
+            .or_else(|| std::env::var_os("PATH"));
+        if let Some(existing_path) = existing_path {
             let mut paths = vec![node_dir.to_path_buf()];
             paths.extend(std::env::split_paths(&existing_path));
             if let Ok(new_path) = std::env::join_paths(paths) {
@@ -215,6 +221,13 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
             }
         }
     }
+
+    let launch_args: Vec<String> = setting
+        .dsh_arguments
+        .iter()
+        .filter(|argument| *argument != "--port" && !argument.starts_with("--port="))
+        .cloned()
+        .collect();
 
     // 日志文件（前端日志面板读取）
     let log_path = config::get_service_log_path(&app_handle);
@@ -229,15 +242,10 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
     let spawn_result = {
         #[cfg(windows)]
         {
-            let args: Vec<OsString> = vec![
-                dsh_binary_path.as_os_str().to_os_string(),
-                OsString::from("--profile"),
-                OsString::from("web"),
-                OsString::from("--host"),
-                OsString::from("127.0.0.1"),
-                OsString::from("--port"),
-                OsString::from(setting.port.to_string()),
-            ];
+            let mut args: Vec<OsString> = vec![dsh_binary_path.as_os_str().to_os_string()];
+            args.extend(launch_args.iter().map(|value| OsString::from(value.as_str())));
+            args.push(OsString::from("--port"));
+            args.push(OsString::from(setting.port.to_string()));
             win_spawn::spawn_with_hidden_console(
                 &node_binary_path,
                 &args,
@@ -250,10 +258,7 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         {
             let mut cmd = Command::new(&node_binary_path);
             cmd.arg(&dsh_binary_path)
-                .arg("--profile")
-                .arg("web")
-                .arg("--host")
-                .arg("127.0.0.1")
+                .args(&launch_args)
                 .arg("--port")
                 .arg(&setting.port.to_string())
                 .envs(&envs)
@@ -385,7 +390,7 @@ pub async fn install(
         log::debug!("Download URL: {}", url);
         let name = url.split('/').last().unwrap().to_string();
         log::debug!("File name: {}", name);
-        let buffer = download::download_file(&tracker, url).await?;
+        let buffer = download::download_file(&tracker, app_handle, url).await?;
         log::info!("Download completed, file size: {} bytes", buffer.len());
         tracker.end_phase();
 

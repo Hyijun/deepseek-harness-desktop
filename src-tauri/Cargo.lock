@@ -786,7 +786,6 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-fs",
  "tauri-plugin-opener",
- "tauri-plugin-store",
  "tokio",
  "windows-sys 0.61.2",
  "zip",
@@ -4210,22 +4209,6 @@ dependencies = [
  "url",
  "windows",
  "zbus",
-]
-
-[[package]]
-name = "tauri-plugin-store"
-version = "2.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6708afbe549f176b712066e71648ba8fafba20789453718260c7ca356733cb0c"
-dependencies = [
- "dunce",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
 ]
 
 [[package]]

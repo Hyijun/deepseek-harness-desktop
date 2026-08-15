@@ -2,19 +2,123 @@ use serde::Serialize;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Runtime};
+use std::sync::OnceLock;
+use tauri::{AppHandle, Manager, Runtime};
 
 use super::constants::*;
 use super::format::get_dsh_service_url;
 use super::utils::search_node_binary;
 
-/// 获取当前应用可执行文件所在的安装目录
-pub fn get_base_dir<R: Runtime>(_app_handle: &AppHandle<R>) -> PathBuf {
-    env::current_exe()
-        .expect("Failed to resolve current executable path")
-        .parent()
-        .expect("Current executable path has no parent directory")
-        .to_path_buf()
+static BASE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+fn app_data_dir<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
+    app_handle
+        .path()
+        .app_data_dir()
+        .expect("Failed to resolve app data directory")
+}
+
+#[cfg(windows)]
+fn is_directory_writable(directory: &Path) -> bool {
+    if !directory.is_dir() {
+        return false;
+    }
+
+    let probe_path = directory.join(format!(".dsh-write-probe-{}", std::process::id()));
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe_path)
+    {
+        Ok(_) => {
+            let _ = fs::remove_file(probe_path);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+fn resolve_base_dir<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
+    #[cfg(windows)]
+    {
+        if let Some(install_dir) = env::current_exe().ok().and_then(|path| path.parent().map(Path::to_path_buf)) {
+            if is_directory_writable(&install_dir) {
+                return install_dir;
+            }
+        }
+    }
+
+    app_data_dir(app_handle)
+}
+
+/// 在应用启动阶段解析基础目录；后续调用会复用同一缓存值。
+pub fn initialize_base_dir<R: Runtime>(app_handle: &AppHandle<R>) {
+    let _ = get_base_dir(app_handle);
+}
+
+/// 获取资源、配置和运行时数据的基础目录。
+///
+/// Windows 上优先使用可写的安装目录；其他平台及不可写安装目录的 Windows 环境使用 Tauri App Data。
+pub fn get_base_dir<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
+    BASE_DIR
+        .get_or_init(|| resolve_base_dir(app_handle))
+        .clone()
+}
+
+/// WebView 的 localStorage、缓存和会话数据目录
+pub fn get_webview_data_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
+    get_base_dir(app_handle).join("data").join("webview")
+}
+
+fn copy_webview_data(source: &Path, destination: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == "LOCK" || name == "lockfile" {
+            continue;
+        }
+
+        let source_path = entry.path();
+        let destination_path = destination.join(&name);
+        if entry.file_type()?.is_dir() {
+            copy_webview_data(&source_path, &destination_path)?;
+        } else {
+            fs::copy(source_path, destination_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// 首次改用安装目录时迁移旧 WebView2 配置，保留界面语言和缩放等浏览器状态。
+pub fn migrate_legacy_webview_data<R: Runtime>(app_handle: &AppHandle<R>) {
+    let destination = get_webview_data_path(app_handle);
+    if destination.exists() {
+        return;
+    }
+
+    let Ok(legacy_root) = app_handle.path().app_local_data_dir() else {
+        return;
+    };
+    let source = legacy_root.join("EBWebView");
+    if !source.is_dir() {
+        return;
+    }
+
+    if let Err(error) = copy_webview_data(&source, &destination) {
+        let _ = fs::remove_dir_all(&destination);
+        log::warn!(
+            "Failed to migrate legacy WebView data from {}: {}",
+            source.display(),
+            error
+        );
+    } else {
+        log::info!(
+            "Migrated WebView data from {} to {}",
+            source.display(),
+            destination.display()
+        );
+    }
 }
 
 /// Node.js 运行时下载地址
@@ -268,6 +372,24 @@ pub struct RuntimeInfo {
     pub log_path: String,
     pub platform: String,
     pub arch: String,
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::is_directory_writable;
+    use std::fs;
+
+    #[test]
+    fn writable_directory_passes_probe() {
+        let path = std::env::temp_dir().join(format!(
+            "deepseek-harness-desktop-writable-probe-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).unwrap();
+
+        assert!(is_directory_writable(&path));
+        fs::remove_dir_all(path).unwrap();
+    }
 }
 
 pub fn runtime_info<R: Runtime>(app: &AppHandle<R>, port: u16) -> RuntimeInfo {

@@ -13,9 +13,17 @@ export interface RuntimeInfo {
   arch: string;
 }
 
+export interface DshEnvironmentVariable {
+  name: string;
+  value: string;
+}
+
 export interface AppConfig {
   port: number;
   auto_start: boolean;
+  http_proxy: string;
+  dsh_environment: DshEnvironmentVariable[];
+  dsh_arguments: string[];
 }
 
 interface SidebarPanelProps {
@@ -46,6 +54,9 @@ export default function SidebarPanel({
   const [info, setInfo] = useState<RuntimeInfo | null>(null);
   const [port, setPort] = useState("3080");
   const [autoStart, setAutoStart] = useState(true);
+  const [httpProxy, setHttpProxy] = useState("");
+  const [dshEnvironment, setDshEnvironment] = useState<DshEnvironmentVariable[]>([]);
+  const [dshArguments, setDshArguments] = useState<string[]>([]);
   const [logs, setLogs] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
@@ -64,6 +75,9 @@ export default function SidebarPanel({
       const nextConfig = await invoke<AppConfig>("get_app_config");
       setPort(String(nextConfig.port));
       setAutoStart(nextConfig.auto_start);
+      setHttpProxy(nextConfig.http_proxy);
+      setDshEnvironment(nextConfig.dsh_environment);
+      setDshArguments(nextConfig.dsh_arguments);
     } catch (err) {
       console.error("[SidebarPanel] failed to load config:", err);
     }
@@ -97,6 +111,9 @@ export default function SidebarPanel({
       const nextConfig = await invoke<AppConfig>("update_app_config", {
         port: Number.isInteger(nextPort) && nextPort > 0 ? nextPort : null,
         autoStart,
+        httpProxy,
+        dshEnvironment,
+        dshArguments,
       });
       setPort(String(nextConfig.port));
       setNotice(t("messages.config_saved"));
@@ -230,6 +247,91 @@ export default function SidebarPanel({
             <input type="checkbox" checked={autoStart} onChange={(e) => setAutoStart(e.target.checked)} />
             <span>{t("ui.auto_start")}</span>
           </label>
+          <label className="mb-2 block">
+            <span className="mb-1 block text-xs text-muted">{t("ui.http_proxy")}</span>
+            <input
+              className="w-full rounded-md border border-line bg-panel2 px-2 py-1.5 text-[13px] text-ink outline-none focus:border-accent/60"
+              value={httpProxy}
+              onChange={(e) => setHttpProxy(e.target.value)}
+              placeholder={t("ui.http_proxy_placeholder")}
+              inputMode="url"
+              spellCheck={false}
+            />
+          </label>
+          <div className="mb-2 border-t border-line pt-2">
+            <h4 className="mb-2 text-xs uppercase tracking-[0.06em] text-muted">{t("ui.harness_launch")}</h4>
+            <div className="mb-3">
+              <div className="mb-1 flex items-center justify-between text-xs text-muted">
+                <span>{t("ui.dsh_environment")}</span>
+                <button
+                  className={btnBase}
+                  onClick={() => setDshEnvironment([...dshEnvironment, { name: "", value: "" }])}
+                  title={t("buttons.add")}
+                >
+                  +
+                </button>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {dshEnvironment.map((variable, index) => (
+                  <div className="flex items-center gap-1" key={`env-${index}`}>
+                    <input
+                      className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-1.5 py-1 text-xs text-ink outline-none focus:border-accent/60"
+                      value={variable.name}
+                      onChange={(e) => setDshEnvironment(dshEnvironment.map((item, itemIndex) => itemIndex === index ? { ...item, name: e.target.value } : item))}
+                      placeholder={t("ui.name")}
+                      spellCheck={false}
+                    />
+                    <input
+                      className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-1.5 py-1 text-xs text-ink outline-none focus:border-accent/60"
+                      value={variable.value}
+                      onChange={(e) => setDshEnvironment(dshEnvironment.map((item, itemIndex) => itemIndex === index ? { ...item, value: e.target.value } : item))}
+                      placeholder={t("ui.value")}
+                      spellCheck={false}
+                    />
+                    <button
+                      className={btnBase}
+                      onClick={() => setDshEnvironment(dshEnvironment.filter((_, itemIndex) => itemIndex !== index))}
+                      title={t("buttons.remove")}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between text-xs text-muted">
+                <span>{t("ui.dsh_arguments")}</span>
+                <button
+                  className={btnBase}
+                  onClick={() => setDshArguments([...dshArguments, ""])}
+                  title={t("buttons.add")}
+                >
+                  +
+                </button>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {dshArguments.map((argument, index) => (
+                  <div className="flex items-center gap-1" key={`arg-${index}`}>
+                    <input
+                      className="min-w-0 flex-1 rounded-md border border-line bg-panel2 px-1.5 py-1 text-xs text-ink outline-none focus:border-accent/60"
+                      value={argument}
+                      onChange={(e) => setDshArguments(dshArguments.map((item, itemIndex) => itemIndex === index ? e.target.value : item))}
+                      placeholder={t("ui.value")}
+                      spellCheck={false}
+                    />
+                    <button
+                      className={btnBase}
+                      onClick={() => setDshArguments(dshArguments.filter((_, itemIndex) => itemIndex !== index))}
+                      title={t("buttons.remove")}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
           <button className={`${btnBase}${btnBlock}`} onClick={saveConfig} disabled={saving}>
             {saving ? t("ui.saved") : t("ui.save")}
           </button>

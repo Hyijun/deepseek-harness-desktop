@@ -19,7 +19,7 @@ pub async fn install_dependencies(app_handle: AppHandle) -> Result<(), String> {
     // 不一致时，说明上游 pkg 有更新/修复，需要自动重新下载。
     let node_ok = download::Nodejs.check_installed(&app_handle);
     let dsh_files_ok = download::Dsh.check_installed(&app_handle);
-    let dsh_latest = download::fetch_latest_dsh_pkg_commit().await;
+    let dsh_latest = download::fetch_latest_dsh_pkg_commit(&app_handle).await;
 
     let dsh_ok = match &dsh_latest {
         Ok(commit) => {
@@ -68,7 +68,7 @@ pub async fn check_dsh_update(
         return Ok(None);
     }
 
-    let latest = download::fetch_latest_dsh_pkg_info().await?;
+    let latest = download::fetch_latest_dsh_pkg_info(&app_handle).await?;
     let current = config::get_dsh_pkg_commit(&app_handle);
     if current.as_deref() == Some(latest.commit.as_str()) {
         Ok(None)
@@ -127,6 +127,9 @@ pub async fn update_app_config(
     app_handle: AppHandle,
     port: Option<u16>,
     auto_start: Option<bool>,
+    http_proxy: Option<String>,
+    dsh_environment: Option<Vec<config::DshEnvironmentVariable>>,
+    dsh_arguments: Option<Vec<String>>,
 ) -> Result<config::Setting, String> {
     let mut setting = config::get_store_dat_setting(&app_handle);
     if let Some(port) = port {
@@ -137,6 +140,17 @@ pub async fn update_app_config(
     }
     if let Some(auto_start) = auto_start {
         setting.auto_start = auto_start;
+    }
+    if let Some(http_proxy) = http_proxy {
+        setting.http_proxy = config::normalize_http_proxy(&http_proxy)?;
+    }
+    if let Some(environment) = dsh_environment {
+        config::validate_dsh_environment(&environment)?;
+        setting.dsh_environment = environment;
+    }
+    if let Some(arguments) = dsh_arguments {
+        config::validate_dsh_arguments(&arguments)?;
+        setting.dsh_arguments = arguments;
     }
     config::set_store_dat_setting(&app_handle, setting.clone());
     Ok(setting)

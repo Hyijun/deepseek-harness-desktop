@@ -42,6 +42,13 @@ export interface Translations {
     service_url: string;
     port: string;
     auto_start: string;
+    http_proxy: string;
+    http_proxy_placeholder: string;
+    harness_launch: string;
+    dsh_environment: string;
+    dsh_arguments: string;
+    name: string;
+    value: string;
     app_info: string;
     current_version: string;
     dsh_version: string;
@@ -77,6 +84,8 @@ export interface Translations {
     copy: string;
     clear_logs: string;
     refresh_logs: string;
+    add: string;
+    remove: string;
   };
   messages: {
     copy_success: string;

@@ -3,8 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::config;
 use crate::service::download::ProgressTracker;
-use tauri::Runtime;
+use tauri::{AppHandle, Runtime};
 
 /// 下载文件到内存
 ///
@@ -16,14 +17,18 @@ use tauri::Runtime;
 /// 成功返回文件内容 `Ok(Vec<u8>)`，失败返回错误信息
 pub async fn download_file<'a, R: Runtime>(
     tracker: &'a ProgressTracker<'a, R>,
+    app_handle: &AppHandle<R>,
     url: String,
 ) -> Result<Vec<u8>, String> {
     log::info!("Starting file download: {}", url);
     // 创建具备 User-Agent 的客户端
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (deepseek-harness-desktop)")
-        .connect_timeout(std::time::Duration::from_secs(20))
-        .build()
+    let client = config::apply_http_proxy(
+        app_handle,
+        reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (deepseek-harness-desktop)")
+            .connect_timeout(std::time::Duration::from_secs(20)),
+    )?
+    .build()
         .map_err(|e| {
             log::error!("Failed to create HTTP client: {}", e);
             e.to_string()
@@ -225,11 +230,16 @@ pub struct LatestDshPkg {
 ///
 /// 先取最新 release 的 tag_name，再通过 commits 端点把 tag 解析为 commit。
 /// 网络不可用或 API 限流时返回 Err，由调用方决定是否保留本地安装。
-pub async fn fetch_latest_dsh_pkg_info() -> Result<LatestDshPkg, String> {
-    let client = reqwest::Client::builder()
-        .user_agent("deepseek-harness-desktop")
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
+pub async fn fetch_latest_dsh_pkg_info<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> Result<LatestDshPkg, String> {
+    let client = config::apply_http_proxy(
+        app_handle,
+        reqwest::Client::builder()
+            .user_agent("deepseek-harness-desktop")
+            .timeout(std::time::Duration::from_secs(5)),
+    )?
+    .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     // 1. 最新 release 的 tag_name
@@ -271,6 +281,8 @@ pub async fn fetch_latest_dsh_pkg_info() -> Result<LatestDshPkg, String> {
 }
 
 /// 查询 GitHub 上最新 Harness 发行版对应的 commit hash
-pub async fn fetch_latest_dsh_pkg_commit() -> Result<String, String> {
-    fetch_latest_dsh_pkg_info().await.map(|info| info.commit)
+pub async fn fetch_latest_dsh_pkg_commit<R: Runtime>(
+    app_handle: &AppHandle<R>,
+) -> Result<String, String> {
+    fetch_latest_dsh_pkg_info(app_handle).await.map(|info| info.commit)
 }

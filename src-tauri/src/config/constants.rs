@@ -22,9 +22,8 @@ pub const DSH_MANIFEST_RELATIVE: &str = "package.json";
 /// 数据目录名（$DSH_HOME 的相对目录）
 pub const DSH_DATA_DIR_NAME: &str = "dsh";
 
-/// 简单 Store 持久化
+/// 安装目录中的应用设置文件
 pub const STORE_DAT_FILE: &str = ".store.dat";
-pub const STORE_SETTING_KEY: &str = "setting";
 
 /// 健康检查超时
 pub const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(5);

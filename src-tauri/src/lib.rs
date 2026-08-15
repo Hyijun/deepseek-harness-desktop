@@ -125,8 +125,6 @@ fn builder() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_opener::init())
         // FS plugin
         .plugin(tauri_plugin_fs::init())
-        // Simple Store plugin
-        .plugin(tauri_plugin_store::Builder::new().build())
         // Clipboard plugin
         .plugin(tauri_plugin_clipboard_manager::init())
 }
@@ -136,14 +134,32 @@ pub fn run() {
     // 初始化日志系统
     logger::init();
 
+    let mut context = tauri::generate_context!();
+    let main_window = context
+        .config_mut()
+        .app
+        .windows
+        .drain(..)
+        .find(|window| window.label == "main")
+        .expect("Missing main window configuration");
+
     builder()
-        .setup(|app| {
-            tray(&app.handle()).unwrap();
-            setup(app.handle().clone());
+        .setup(move |app| {
+            let app_handle = app.handle();
+            config::initialize_base_dir(&app_handle);
+            config::migrate_legacy_webview_data(&app_handle);
+            let webview_data_path = config::get_webview_data_path(&app_handle);
+            std::fs::create_dir_all(&webview_data_path)?;
+            tauri::WebviewWindowBuilder::from_config(app, &main_window)?
+                .data_directory(webview_data_path)
+                .build()?;
+
+            tray(&app_handle)?;
+            setup(app_handle.clone());
             Ok(())
         })
         .invoke_handler(handler())
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             // 退出时回收 Harness 进程：不回收的话，node 进程会在应用退出后
