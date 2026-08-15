@@ -78,13 +78,13 @@ window.__ModuleLoader__.load({
     report("module-loaded", "client bundle factory executed");
     exports.inject = ["slots"];
     exports.apply = (ctx) => {
-      report("plugin-apply", "requesting conversation.session.header slot");
+      report("plugin-apply", "requesting conversation.session.header.actions slot");
       ctx.inject(["slots"], (scope) => {
         report("slots-ready", "registering Header bridge component");
-        scope.slots.inject("conversation.session.header", () =>
+        scope.slots.inject("conversation.session.header.actions", () =>
           scope.slots.register(
             {
-              name: "conversation.session.header",
+              name: "conversation.session.header.actions",
               id: "desktop-window-drag-bridge",
               order: -1000,
             },
