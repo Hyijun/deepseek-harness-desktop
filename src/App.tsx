@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -59,6 +60,7 @@ export default function App() {
   const bootToken = useRef(0);
   const bootStartedRef = useRef(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const startupDragCleanupRef = useRef<(() => void) | null>(null);
   const appWindow = useMemo(() => getCurrentWindow(), []);
 
   const iframeSrc = useMemo(() => generateTimestampedUrl(serviceUrl), [serviceUrl]);
@@ -69,6 +71,59 @@ export default function App() {
       console.error("[desktop-window-drag] failed to write diagnostic:", err);
     });
   }, []);
+
+  const toggleWindowMaximize = useCallback(() => {
+    void appWindow
+      .isMaximized()
+      .then((maximized) => (maximized ? appWindow.unmaximize() : appWindow.maximize()))
+      .catch((err) => console.error("[desktop-window-drag] failed to toggle startup window maximize:", err));
+  }, [appWindow]);
+
+  const handleStartupDragPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      startupDragCleanupRef.current?.();
+
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const pointerId = event.pointerId;
+      const cleanup = () => {
+        window.removeEventListener("pointermove", handlePointerMove, true);
+        window.removeEventListener("pointerup", cleanup, true);
+        window.removeEventListener("pointercancel", cleanup, true);
+        if (startupDragCleanupRef.current === cleanup) startupDragCleanupRef.current = null;
+      };
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        if ((moveEvent.buttons & 1) === 0) {
+          cleanup();
+          return;
+        }
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 4) return;
+        cleanup();
+        void appWindow.startDragging().catch((err) => {
+          console.error("[desktop-window-drag] failed to drag from startup region:", err);
+        });
+      };
+
+      window.addEventListener("pointermove", handlePointerMove, true);
+      window.addEventListener("pointerup", cleanup, true);
+      window.addEventListener("pointercancel", cleanup, true);
+      startupDragCleanupRef.current = cleanup;
+    },
+    [appWindow],
+  );
+
+  useEffect(() => () => startupDragCleanupRef.current?.(), []);
+
+  const renderStartupDragRegion = () => (
+    <div
+      aria-hidden="true"
+      className="absolute inset-x-0 top-0 z-10 h-12"
+      onDoubleClick={toggleWindowMaximize}
+      onPointerDown={handleStartupDragPointerDown}
+    />
+  );
 
   const handleToggleSidebar = () => {
     setSidebarOpen((prev) => {
@@ -357,6 +412,7 @@ export default function App() {
     return (
       <div className="flex h-screen w-screen">
         <main className="relative flex-1 bg-canvas">
+          {renderStartupDragRegion()}
           <SetupScreen
             status="error"
             title=""
@@ -385,6 +441,7 @@ export default function App() {
     return (
       <div className="flex h-screen w-screen">
         <main className="relative w-full bg-canvas">
+          {renderStartupDragRegion()}
           <SetupScreen
             status={status}
             title={installer.title}
@@ -403,6 +460,7 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen">
       <main className="relative flex-1 bg-canvas">
+        {(!serviceHealthy || !iframeLoaded || iframeError) && renderStartupDragRegion()}
         {!iframeLoaded && (
           <div className="absolute inset-0 z-[1] flex flex-col items-center justify-center gap-3 bg-canvas text-ink">
             <span className="h-[34px] w-[34px] animate-spin rounded-full border-[3px] border-line border-t-accent" />
