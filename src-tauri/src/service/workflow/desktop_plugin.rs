@@ -33,6 +33,13 @@ fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {
     fs::write(path, content).map_err(|error| format!("write {}: {error}", path.display()))
 }
 
+fn deploy_package(package_dir: &Path) -> Result<(), String> {
+    write_if_changed(&package_dir.join("package.json"), PACKAGE_JSON)?;
+    write_if_changed(&package_dir.join("cordis.patch.yml"), PACKAGE_PATCH)?;
+    write_if_changed(&package_dir.join("lib/index.js"), PACKAGE_INDEX)?;
+    write_if_changed(&package_dir.join("lib/client.js"), PACKAGE_CLIENT)
+}
+
 fn default_profile_manifest() -> Value {
     json!({
         "name": "dsh-profile-web",
@@ -94,23 +101,27 @@ fn ensure_profile_bundle(profile_manifest: &Path) -> Result<bool, String> {
 
 /// Deploy the bundled client plugin and register it in the web profile.
 ///
-/// The profile resolver checks the DSH installation before its profile-local
-/// dependencies, so this does not require pnpm or alter user-installed packages.
+/// The bundle resolver reads from the DSH installation, while Node resolves a
+/// loader entry from the profile directory. Keep identical copies at both lookup
+/// roots so no pnpm install or user dependency change is required.
 pub fn ensure_desktop_window_drag_plugin<R: Runtime>(app_handle: &AppHandle<R>) -> Result<(), String> {
     let package_dir = config::get_dsh_install_path(app_handle)
         .join("node_modules")
         .join("@deepseek-harness-desktop")
         .join(PACKAGE_DIR);
+    deploy_package(&package_dir)?;
 
-    write_if_changed(&package_dir.join("package.json"), PACKAGE_JSON)?;
-    write_if_changed(&package_dir.join("cordis.patch.yml"), PACKAGE_PATCH)?;
-    write_if_changed(&package_dir.join("lib/index.js"), PACKAGE_INDEX)?;
-    write_if_changed(&package_dir.join("lib/client.js"), PACKAGE_CLIENT)?;
-
-    let profile_manifest = config::get_dsh_data_path(app_handle)
+    let profile_dir = config::get_dsh_data_path(app_handle)
         .join("profiles")
-        .join("web")
-        .join("package.json");
+        .join("web");
+    deploy_package(
+        &profile_dir
+            .join("node_modules")
+            .join("@deepseek-harness-desktop")
+            .join(PACKAGE_DIR),
+    )?;
+
+    let profile_manifest = profile_dir.join("package.json");
     if ensure_profile_bundle(&profile_manifest)? {
         log::info!("Registered desktop window drag bridge in the DSH web profile");
     }
@@ -119,7 +130,7 @@ pub fn ensure_desktop_window_drag_plugin<R: Runtime>(app_handle: &AppHandle<R>) 
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_profile_bundle, PACKAGE_NAME};
+    use super::{deploy_package, ensure_profile_bundle, PACKAGE_NAME};
     use serde_json::Value;
     use std::fs;
 
@@ -138,6 +149,21 @@ mod tests {
         let document: Value = serde_json::from_str(&fs::read_to_string(&manifest).unwrap()).unwrap();
         let bundles = document["dsh"]["profile"]["bundles"].as_array().unwrap();
         assert_eq!(bundles.last().and_then(Value::as_str), Some(PACKAGE_NAME));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deploys_a_profile_local_package_copy() {
+        let root = std::env::temp_dir().join(format!(
+            "dsh-desktop-plugin-package-{}",
+            std::process::id()
+        ));
+        let package_dir = root.join("node_modules/@deepseek-harness-desktop/dsh-window-drag-bridge");
+
+        deploy_package(&package_dir).unwrap();
+        assert!(package_dir.join("package.json").is_file());
+        assert!(package_dir.join("lib/client.js").is_file());
 
         fs::remove_dir_all(root).unwrap();
     }
