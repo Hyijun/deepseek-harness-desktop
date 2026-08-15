@@ -6,7 +6,10 @@ window.__ModuleLoader__.load({
     const React = require("react");
     const BRIDGE_PREFIX = "[desktop-window-drag-bridge]";
     const DRAG_MESSAGE_TYPE = "deepseek-harness-desktop:start-window-drag";
+    const MINIMIZE_MESSAGE_TYPE = "deepseek-harness-desktop:minimize-window";
     const TOGGLE_MAXIMIZE_MESSAGE_TYPE = "deepseek-harness-desktop:toggle-window-maximize";
+    const HIDE_WINDOW_MESSAGE_TYPE = "deepseek-harness-desktop:hide-window";
+    const TOGGLE_SIDEBAR_MESSAGE_TYPE = "deepseek-harness-desktop:toggle-sidebar";
     const DIAGNOSTIC_MESSAGE_TYPE = "deepseek-harness-desktop:drag-bridge-diagnostic";
 
     function report(stage, detail) {
@@ -21,6 +24,85 @@ window.__ModuleLoader__.load({
       return target.closest(
         "button, a, input, textarea, select, option, [role='button'], [role='menuitem'], [contenteditable='true'], [data-no-window-drag]",
       ) !== null;
+    }
+
+    const controlStyle = {
+      alignItems: "center",
+      background: "transparent",
+      border: 0,
+      borderRadius: 4,
+      color: "inherit",
+      cursor: "pointer",
+      display: "inline-flex",
+      height: 28,
+      justifyContent: "center",
+      padding: 0,
+      width: 28,
+    };
+
+    function HeaderControlIcon({ type }) {
+      const props = {
+        "aria-hidden": true,
+        fill: "none",
+        height: 15,
+        stroke: "currentColor",
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        strokeWidth: 1.8,
+        viewBox: "0 0 24 24",
+        width: 15,
+      };
+      if (type === "minimize") {
+        return React.createElement("svg", props, React.createElement("path", { d: "M5 12h14" }));
+      }
+      if (type === "maximize") {
+        return React.createElement("svg", props, React.createElement("rect", { height: 12, rx: 1, width: 12, x: 6, y: 6 }));
+      }
+      if (type === "close") {
+        return React.createElement(
+          "svg",
+          props,
+          React.createElement("path", { d: "M6 6l12 12" }),
+          React.createElement("path", { d: "M18 6 6 18" }),
+        );
+      }
+      return React.createElement(
+        "svg",
+        props,
+        React.createElement("circle", { cx: 12, cy: 12, r: 3 }),
+        React.createElement("path", { d: "M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06A1.7 1.7 0 0 0 15.76 18a1.7 1.7 0 0 0-1.04 1.56V20h-3v-.44A1.7 1.7 0 0 0 10.68 18a1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7 14.36a1.7 1.7 0 0 0-1.56-1.04H5v-3h.44A1.7 1.7 0 0 0 7 9.28a1.7 1.7 0 0 0-.34-1.88L6.6 7.34l2.1-2.1.06.06A1.7 1.7 0 0 0 10.64 5a1.7 1.7 0 0 0 1.04-1.56V3h3v.44A1.7 1.7 0 0 0 15.72 5a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06A1.7 1.7 0 0 0 19.4 8.64 1.7 1.7 0 0 0 21 9.68H21.4v3H21a1.7 1.7 0 0 0-1.6 1.04Z" }),
+      );
+    }
+
+    function HeaderWindowControls() {
+      const send = (type) => (event) => {
+        event.stopPropagation();
+        window.parent.postMessage({ type }, "*");
+      };
+      return React.createElement(
+        "div",
+        { "data-no-window-drag": "", style: { alignItems: "center", display: "inline-flex", gap: 2 } },
+        React.createElement(
+          "button",
+          { "aria-label": "Open interface settings", "data-no-window-drag": "", onClick: send(TOGGLE_SIDEBAR_MESSAGE_TYPE), style: controlStyle, title: "Open interface settings", type: "button" },
+          React.createElement(HeaderControlIcon, { type: "settings" }),
+        ),
+        React.createElement(
+          "button",
+          { "aria-label": "Minimize window", "data-no-window-drag": "", onClick: send(MINIMIZE_MESSAGE_TYPE), style: controlStyle, title: "Minimize window", type: "button" },
+          React.createElement(HeaderControlIcon, { type: "minimize" }),
+        ),
+        React.createElement(
+          "button",
+          { "aria-label": "Maximize or restore window", "data-no-window-drag": "", onClick: send(TOGGLE_MAXIMIZE_MESSAGE_TYPE), style: controlStyle, title: "Maximize or restore window", type: "button" },
+          React.createElement(HeaderControlIcon, { type: "maximize" }),
+        ),
+        React.createElement(
+          "button",
+          { "aria-label": "Hide window", "data-no-window-drag": "", onClick: send(HIDE_WINDOW_MESSAGE_TYPE), style: controlStyle, title: "Hide window", type: "button" },
+          React.createElement(HeaderControlIcon, { type: "close" }),
+        ),
+      );
     }
 
     function HeaderDragBridge() {
@@ -112,6 +194,16 @@ window.__ModuleLoader__.load({
               order: -1000,
             },
             HeaderDragBridge,
+          ),
+        );
+        scope.slots.inject("conversation.session.header.utilities", () =>
+          scope.slots.register(
+            {
+              name: "conversation.session.header.utilities",
+              id: "desktop-window-controls",
+              order: 1000,
+            },
+            HeaderWindowControls,
           ),
         );
       });

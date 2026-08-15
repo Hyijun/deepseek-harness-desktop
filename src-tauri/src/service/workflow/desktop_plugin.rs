@@ -163,7 +163,11 @@ mod tests {
 
         deploy_package(&package_dir).unwrap();
         assert!(package_dir.join("package.json").is_file());
-        assert!(package_dir.join("lib/client.js").is_file());
+        let client = fs::read_to_string(package_dir.join("lib/client.js")).unwrap();
+        assert!(client.contains("conversation.session.header.utilities"));
+        assert!(client.contains("desktop-window-controls"));
+        assert!(client.contains("minimize-window"));
+        assert!(client.contains("hide-window"));
 
         fs::remove_dir_all(root).unwrap();
     }

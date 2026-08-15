@@ -12,7 +12,10 @@ import { useDshTheme } from "./hooks/useDshTheme";
 
 const MAX_RETRIES = 8;
 const WINDOW_DRAG_MESSAGE = "deepseek-harness-desktop:start-window-drag";
+const WINDOW_MINIMIZE_MESSAGE = "deepseek-harness-desktop:minimize-window";
 const WINDOW_TOGGLE_MAXIMIZE_MESSAGE = "deepseek-harness-desktop:toggle-window-maximize";
+const WINDOW_HIDE_MESSAGE = "deepseek-harness-desktop:hide-window";
+const WINDOW_TOGGLE_SIDEBAR_MESSAGE = "deepseek-harness-desktop:toggle-sidebar";
 const WINDOW_DRAG_DIAGNOSTIC_MESSAGE = "deepseek-harness-desktop:drag-bridge-diagnostic";
 const WINDOW_DRAG_MESSAGE_PREFIX = "deepseek-harness-desktop:";
 
@@ -125,12 +128,12 @@ export default function App() {
     />
   );
 
-  const handleToggleSidebar = () => {
+  const handleToggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => {
       localStorage.setItem("sidebarOpen", String(!prev));
       return !prev;
     });
-  };
+  }, []);
 
   // 点击侧边栏外内容（遮罩）时收起侧边栏
   const handleCloseSidebar = () => {
@@ -165,6 +168,22 @@ export default function App() {
         reportWindowDragDiagnostic(stage, detail);
         return;
       }
+      if (message.type === WINDOW_TOGGLE_SIDEBAR_MESSAGE) {
+        handleToggleSidebar();
+        return;
+      }
+      if (message.type === WINDOW_MINIMIZE_MESSAGE) {
+        void appWindow.minimize().catch((err) => {
+          console.error("[desktop-window-drag] failed to minimize window:", err);
+        });
+        return;
+      }
+      if (message.type === WINDOW_HIDE_MESSAGE) {
+        void appWindow.hide().catch((err) => {
+          console.error("[desktop-window-drag] failed to hide window:", err);
+        });
+        return;
+      }
       if (message.type === WINDOW_DRAG_MESSAGE) {
         reportWindowDragDiagnostic("drag-request-received", "validated iframe request; calling Tauri startDragging");
         void appWindow
@@ -191,7 +210,7 @@ export default function App() {
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [appWindow, dshOrigin, reportWindowDragDiagnostic]);
+  }, [appWindow, dshOrigin, handleToggleSidebar, reportWindowDragDiagnostic]);
 
   const refreshIframe = useCallback(() => {
     setIframeLoaded(false);
@@ -511,7 +530,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <WindowControls sidebarOpen={sidebarOpen} onToggleSidebar={handleToggleSidebar} />
+      {!iframeLoaded && <WindowControls sidebarOpen={sidebarOpen} onToggleSidebar={handleToggleSidebar} />}
       <SidebarPanel
         open={sidebarOpen}
         serviceRunning={serviceRunning}
