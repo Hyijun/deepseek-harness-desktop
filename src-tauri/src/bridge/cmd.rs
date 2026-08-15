@@ -200,6 +200,31 @@ pub async fn reveal_data_dir(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Record authenticated renderer diagnostics in the service log panel.
+#[tauri::command]
+pub fn report_window_drag_diagnostic(
+    app_handle: AppHandle,
+    stage: String,
+    detail: String,
+) -> Result<(), String> {
+    let stage = stage.replace(['\r', '\n'], " ");
+    let detail = detail.replace(['\r', '\n'], " ");
+    let entry = format!("[desktop-window-drag] {stage}: {detail}");
+    log::info!("{entry}");
+
+    let log_path = config::get_service_log_path(&app_handle);
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+        .map_err(|error| error.to_string())?;
+    writeln!(file, "{entry}").map_err(|error| error.to_string())
+}
+
 /// 读取 dsh 服务日志
 #[tauri::command]
 pub async fn read_service_logs(

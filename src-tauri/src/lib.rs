@@ -97,6 +97,7 @@ fn handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         bridge::cmd::restart_harness,
         bridge::cmd::get_dsh_status,
         bridge::cmd::proxy_health_check,
+        bridge::cmd::report_window_drag_diagnostic,
         bridge::cmd::get_runtime_info,
         bridge::cmd::get_app_config,
         bridge::cmd::update_app_config,
