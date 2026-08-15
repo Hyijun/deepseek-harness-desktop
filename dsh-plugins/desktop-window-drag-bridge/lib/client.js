@@ -47,8 +47,31 @@ window.__ModuleLoader__.load({
             report("pointerdown-ignored", "interactive target");
             return;
           }
-          report("drag-requested", "posting native drag request");
-          window.parent.postMessage({ type: DRAG_MESSAGE_TYPE }, "*");
+
+          const startX = event.clientX;
+          const startY = event.clientY;
+          const pointerId = event.pointerId;
+          const cleanup = () => {
+            header.removeEventListener("pointermove", handlePointerMove, true);
+            header.removeEventListener("pointerup", cleanup, true);
+            header.removeEventListener("pointercancel", cleanup, true);
+          };
+          const handlePointerMove = (moveEvent) => {
+            if (moveEvent.pointerId !== pointerId) return;
+            if ((moveEvent.buttons & 1) === 0) {
+              cleanup();
+              return;
+            }
+            if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 4) return;
+            cleanup();
+            report("drag-requested", "pointer moved after primary press; posting native drag request");
+            window.parent.postMessage({ type: DRAG_MESSAGE_TYPE }, "*");
+          };
+
+          report("drag-armed", "waiting for pointer movement before native drag request");
+          header.addEventListener("pointermove", handlePointerMove, true);
+          header.addEventListener("pointerup", cleanup, true);
+          header.addEventListener("pointercancel", cleanup, true);
         };
         const handleDoubleClick = (event) => {
           if (event.defaultPrevented) {
