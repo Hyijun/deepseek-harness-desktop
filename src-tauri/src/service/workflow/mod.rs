@@ -1,3 +1,4 @@
+pub mod desktop_plugin;
 pub mod status;
 pub mod utils;
 #[cfg(windows)]
@@ -170,6 +171,7 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         log::error!("Harness not installed");
         return Err("HARNESS_NOT_FOUND: Harness not installed".to_string());
     }
+    desktop_plugin::ensure_desktop_window_drag_plugin(&app_handle)?;
 
     // 避免重复启动（配合启动守卫，确保并发调用只拉起一个进程）
     if is_dsh_running().await {

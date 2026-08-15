@@ -18,7 +18,7 @@ interface WindowControlsProps {
  * 参考 damn-reports 的自定义标题栏：去掉系统边框后，把窗口控制放到
  * 右侧侧边栏按钮所在的位置，内嵌 dsh 页面保持全窗口显示；
  * 半透明面板浮于其上并跟随 dsh 主题切换，视觉上与内部应用融为一体。
- * 中间偏右的空白区域用于拖动窗口，双击可最大化。
+ * DSH 会话 Header 中的本地 client plugin 会触发窗口拖拽。
  */
 export default function WindowControls({ sidebarOpen, onToggleSidebar }: WindowControlsProps) {
   const { t } = useI18n();
@@ -74,8 +74,6 @@ export default function WindowControls({ sidebarOpen, onToggleSidebar }: WindowC
   return (
     <>
       <InterfaceZoom />
-      {/* 固定覆盖窗口右半边；窗口控制按钮使用更高层级，不受拖拽层影响。 */}
-      <div data-tauri-drag-region className="fixed top-0 left-1/2 z-40 h-12 w-1/2" />
       <div className="fixed top-2 right-2 z-50">
       <div className="flex items-center gap-0.5 rounded-lg bg-panel/80 p-1 backdrop-blur-md">
         <button

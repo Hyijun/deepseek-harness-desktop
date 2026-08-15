@@ -1,0 +1,4 @@
+# Registers the desktop-only client bridge after the standard web UI bundles.
+- insert:
+    - id: desktop-window-drag-bridge
+      name: '@deepseek-harness-desktop/dsh-window-drag-bridge'

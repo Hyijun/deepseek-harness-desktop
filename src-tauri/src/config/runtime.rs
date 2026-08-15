@@ -286,7 +286,7 @@ pub fn get_dsh_package_json_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathB
 }
 
 /// Harness 用户数据目录（$DSH_HOME）
-pub fn get_dsh_data_path(app_handle: &tauri::AppHandle) -> PathBuf {
+pub fn get_dsh_data_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     get_base_dir(app_handle).join("data").join(DSH_DATA_DIR_NAME)
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import WindowControls from "./components/WindowControls";
 import SetupScreen, { InstallProgress, SetupStatus } from "./components/SetupScreen";
 import SidebarPanel from "./components/SidebarPanel";
@@ -9,6 +10,8 @@ import { generateTimestampedUrl } from "./hooks/useAutoSync";
 import { useDshTheme } from "./hooks/useDshTheme";
 
 const MAX_RETRIES = 8;
+const WINDOW_DRAG_MESSAGE = "deepseek-harness-desktop:start-window-drag";
+const WINDOW_TOGGLE_MAXIMIZE_MESSAGE = "deepseek-harness-desktop:toggle-window-maximize";
 
 interface InstallerState {
   title: string;
@@ -53,8 +56,11 @@ export default function App() {
 
   const bootToken = useRef(0);
   const bootStartedRef = useRef(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const appWindow = useMemo(() => getCurrentWindow(), []);
 
   const iframeSrc = useMemo(() => generateTimestampedUrl(serviceUrl), [serviceUrl]);
+  const dshOrigin = useMemo(() => new URL(serviceUrl).origin, [serviceUrl]);
 
   const handleToggleSidebar = () => {
     setSidebarOpen((prev) => {
@@ -69,6 +75,34 @@ export default function App() {
     localStorage.setItem("sidebarOpen", "false");
   };
 
+  // The DSH client plugin sends this only from a session Header's non-interactive area.
+  // Verify both the frame identity and its current origin before requesting native drag.
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent<unknown>) => {
+      if (event.origin !== dshOrigin || event.source !== iframeRef.current?.contentWindow) return;
+      if (typeof event.data !== "object" || event.data === null || !("type" in event.data)) {
+        return;
+      }
+      if (event.data.type === WINDOW_DRAG_MESSAGE) {
+        void appWindow.startDragging().catch((err) => {
+          console.error("[App] failed to start window dragging:", err);
+        });
+        return;
+      }
+      if (event.data.type === WINDOW_TOGGLE_MAXIMIZE_MESSAGE) {
+        void appWindow
+          .isMaximized()
+          .then((maximized) => (maximized ? appWindow.unmaximize() : appWindow.maximize()))
+          .catch((err) => console.error("[App] failed to toggle window maximize:", err));
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [appWindow, dshOrigin]);
+
+  //ฤศจassistant to=functions.edit  彩神争霸网站՞ւjson /*<<<ി՞նչ սպասിച്ചു  微信天天中彩票】【。json
+  //
   const refreshIframe = useCallback(() => {
     setIframeLoaded(false);
     setIframeError(false);
@@ -351,6 +385,7 @@ export default function App() {
         )}
         {serviceHealthy && (
           <iframe
+            ref={iframeRef}
             key={iframeKey}
             className="block h-full w-full border-none bg-white"
             src={iframeSrc}
