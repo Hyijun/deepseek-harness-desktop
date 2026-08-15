@@ -1,6 +1,8 @@
 window.__ModuleLoader__.load({
   id: "@deepseek-harness-desktop/dsh-window-drag-bridge",
   factory: (require) => {
+    var module = { exports: {} };
+    var exports = module.exports;
     const React = require("react");
     const BRIDGE_PREFIX = "[desktop-window-drag-bridge]";
     const DRAG_MESSAGE_TYPE = "deepseek-harness-desktop:start-window-drag";
@@ -91,5 +93,6 @@ window.__ModuleLoader__.load({
         );
       });
     };
+    return module.exports;
   },
 });
