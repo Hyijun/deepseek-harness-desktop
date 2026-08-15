@@ -138,8 +138,6 @@ export default function App() {
     return () => window.removeEventListener("message", handleMessage);
   }, [appWindow, dshOrigin, reportWindowDragDiagnostic]);
 
-  //ฤศจassistant to=functions.edit  彩神争霸网站՞ւjson /*<<<ി՞նչ սպասിച്ചു  微信天天中彩票】【。json
-  //
   const refreshIframe = useCallback(() => {
     setIframeLoaded(false);
     setIframeError(false);
