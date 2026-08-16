@@ -168,6 +168,8 @@ mod tests {
         assert!(client.contains("desktop-window-controls"));
         assert!(client.contains("minimize-window"));
         assert!(client.contains("hide-window"));
+        assert!(client.contains("write-native-clipboard"));
+        assert!(client.contains("native-clipboard-write-result"));
 
         fs::remove_dir_all(root).unwrap();
     }

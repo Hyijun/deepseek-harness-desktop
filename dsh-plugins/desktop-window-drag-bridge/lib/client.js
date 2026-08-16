@@ -10,6 +10,8 @@ window.__ModuleLoader__.load({
     const TOGGLE_MAXIMIZE_MESSAGE_TYPE = "deepseek-harness-desktop:toggle-window-maximize";
     const HIDE_WINDOW_MESSAGE_TYPE = "deepseek-harness-desktop:hide-window";
     const NATIVE_NOTIFICATION_MESSAGE_TYPE = "deepseek-harness-desktop:show-native-notification";
+    const NATIVE_CLIPBOARD_WRITE_MESSAGE_TYPE = "deepseek-harness-desktop:write-native-clipboard";
+    const NATIVE_CLIPBOARD_WRITE_RESULT_MESSAGE_TYPE = "deepseek-harness-desktop:native-clipboard-write-result";
     const TOGGLE_SIDEBAR_MESSAGE_TYPE = "deepseek-harness-desktop:toggle-sidebar";
     const DIAGNOSTIC_MESSAGE_TYPE = "deepseek-harness-desktop:drag-bridge-diagnostic";
 
@@ -52,6 +54,53 @@ window.__ModuleLoader__.load({
         console.info(`${BRIDGE_PREFIX} embedded Notification bridge installed`);
       } catch (error) {
         console.error(`${BRIDGE_PREFIX} failed to install embedded Notification bridge`, error);
+      }
+    }
+
+    function installEmbeddedClipboardBridge() {
+      if (window.parent === window) return;
+
+      const pendingWrites = new Map();
+      let nextRequestId = 0;
+      const existingClipboard = navigator.clipboard;
+      const clipboard = Object.create(existingClipboard ?? null);
+      clipboard.writeText = (text) => {
+        const requestId = `clipboard-${Date.now()}-${nextRequestId++}`;
+        return new Promise((resolve, reject) => {
+          pendingWrites.set(requestId, { resolve, reject });
+          window.parent.postMessage(
+            {
+              type: NATIVE_CLIPBOARD_WRITE_MESSAGE_TYPE,
+              requestId,
+              text: String(text),
+            },
+            "*",
+          );
+        });
+      };
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window.parent || typeof event.data !== "object" || event.data === null) return;
+        const { type, requestId, error } = event.data;
+        if (type !== NATIVE_CLIPBOARD_WRITE_RESULT_MESSAGE_TYPE || typeof requestId !== "string") return;
+        const pending = pendingWrites.get(requestId);
+        if (pending === undefined) return;
+        pendingWrites.delete(requestId);
+        if (typeof error === "string" && error.length > 0) {
+          pending.reject(new Error(error));
+        } else {
+          pending.resolve();
+        }
+      });
+
+      try {
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: clipboard,
+        });
+        console.info(`${BRIDGE_PREFIX} embedded clipboard bridge installed`);
+      } catch (error) {
+        console.error(`${BRIDGE_PREFIX} failed to install embedded clipboard bridge`, error);
       }
     }
 
@@ -218,6 +267,7 @@ window.__ModuleLoader__.load({
     }
 
     installEmbeddedNotificationBridge();
+    installEmbeddedClipboardBridge();
     report("module-loaded", "client bundle factory executed");
     exports.inject = ["slots"];
     exports.apply = (ctx) => {

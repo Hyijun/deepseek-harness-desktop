@@ -226,6 +226,20 @@ pub fn report_window_drag_diagnostic(
     writeln!(file, "{entry}").map_err(|error| error.to_string())
 }
 
+/// Write text requested by the authenticated embedded DSH frame to the system clipboard.
+#[tauri::command]
+pub fn write_system_clipboard(app_handle: AppHandle, text: String) -> Result<(), String> {
+    const MAX_CLIPBOARD_BYTES: usize = 16 * 1024 * 1024;
+    if text.len() > MAX_CLIPBOARD_BYTES {
+        return Err("clipboard text exceeds the 16 MiB limit".to_string());
+    }
+
+    app_handle
+        .clipboard()
+        .write_text(text)
+        .map_err(|error| error.to_string())
+}
+
 /// Display a notification requested by the authenticated embedded DSH frame.
 #[tauri::command]
 pub fn show_system_notification(
