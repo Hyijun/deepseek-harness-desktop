@@ -15,6 +15,7 @@ const WINDOW_DRAG_MESSAGE = "deepseek-harness-desktop:start-window-drag";
 const WINDOW_MINIMIZE_MESSAGE = "deepseek-harness-desktop:minimize-window";
 const WINDOW_TOGGLE_MAXIMIZE_MESSAGE = "deepseek-harness-desktop:toggle-window-maximize";
 const WINDOW_HIDE_MESSAGE = "deepseek-harness-desktop:hide-window";
+const NATIVE_NOTIFICATION_MESSAGE = "deepseek-harness-desktop:show-native-notification";
 const WINDOW_TOGGLE_SIDEBAR_MESSAGE = "deepseek-harness-desktop:toggle-sidebar";
 const WINDOW_DRAG_DIAGNOSTIC_MESSAGE = "deepseek-harness-desktop:drag-bridge-diagnostic";
 const WINDOW_DRAG_MESSAGE_PREFIX = "deepseek-harness-desktop:";
@@ -149,7 +150,13 @@ export default function App() {
       if (typeof event.data !== "object" || event.data === null || !("type" in event.data)) {
         return;
       }
-      const message = event.data as { type?: unknown; stage?: unknown; detail?: unknown };
+      const message = event.data as {
+        type?: unknown;
+        stage?: unknown;
+        detail?: unknown;
+        title?: unknown;
+        body?: unknown;
+      };
       if (typeof message.type !== "string" || !message.type.startsWith(WINDOW_DRAG_MESSAGE_PREFIX)) {
         return;
       }
@@ -166,6 +173,14 @@ export default function App() {
         const stage = typeof message.stage === "string" ? message.stage : "plugin-diagnostic";
         const detail = typeof message.detail === "string" ? message.detail : "no detail supplied";
         reportWindowDragDiagnostic(stage, detail);
+        return;
+      }
+      if (message.type === NATIVE_NOTIFICATION_MESSAGE) {
+        const title = typeof message.title === "string" ? message.title : "DSH";
+        const body = typeof message.body === "string" ? message.body : "";
+        void invoke("show_system_notification", { title, body }).catch((err) => {
+          console.error("[desktop-notification] failed to show native notification:", err);
+        });
         return;
       }
       if (message.type === WINDOW_TOGGLE_SIDEBAR_MESSAGE) {

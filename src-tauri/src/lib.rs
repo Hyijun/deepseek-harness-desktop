@@ -31,6 +31,43 @@ fn setup(app_handle: tauri::AppHandle) {
     });
 }
 
+#[cfg(windows)]
+fn allow_webview_notifications<R: Runtime>(window: &tauri::WebviewWindow<R>) -> tauri::Result<()> {
+    use webview2_com::{
+        PermissionRequestedEventHandler,
+        Microsoft::Web::WebView2::Win32::{
+            COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS,
+            COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+        },
+    };
+
+    window.with_webview(|webview| unsafe {
+        let core_webview = match webview.controller().CoreWebView2() {
+            Ok(core_webview) => core_webview,
+            Err(error) => {
+                log::error!("Failed to access WebView2 for notification permissions: {error}");
+                return;
+            }
+        };
+        let mut token = 0;
+        if let Err(error) = core_webview.add_PermissionRequested(
+            &PermissionRequestedEventHandler::create(Box::new(|_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+                args.PermissionKind(&mut kind)?;
+                if kind == COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS {
+                    args.SetState(COREWEBVIEW2_PERMISSION_STATE_ALLOW)?;
+                    log::info!("Allowed WebView2 notification permission request");
+                }
+                Ok(())
+            })),
+            &mut token,
+        ) {
+            log::error!("Failed to register WebView2 notification permission handler: {error}");
+        }
+    })
+}
+
 // setup tray
 fn tray<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     // 使用默认窗口图标
@@ -98,6 +135,7 @@ fn handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         bridge::cmd::get_dsh_status,
         bridge::cmd::proxy_health_check,
         bridge::cmd::report_window_drag_diagnostic,
+        bridge::cmd::show_system_notification,
         bridge::cmd::get_runtime_info,
         bridge::cmd::get_app_config,
         bridge::cmd::update_app_config,
@@ -128,6 +166,8 @@ fn builder() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_fs::init())
         // Clipboard plugin
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Cross-platform native system notifications
+        .plugin(tauri_plugin_notification::init())
 }
 
 // run app
@@ -151,9 +191,11 @@ pub fn run() {
             config::migrate_legacy_webview_data(&app_handle);
             let webview_data_path = config::get_webview_data_path(&app_handle);
             std::fs::create_dir_all(&webview_data_path)?;
-            tauri::WebviewWindowBuilder::from_config(app, &main_window)?
+            let main_webview = tauri::WebviewWindowBuilder::from_config(app, &main_window)?
                 .data_directory(webview_data_path)
                 .build()?;
+            #[cfg(windows)]
+            allow_webview_notifications(&main_webview)?;
 
             tray(&app_handle)?;
             setup(app_handle.clone());

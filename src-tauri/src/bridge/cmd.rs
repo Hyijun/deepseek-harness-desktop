@@ -3,6 +3,7 @@ use crate::service::download::{self, Installable};
 use crate::service::workflow;
 use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
 /// 一键安装依赖（Node.js 运行时 + 打包的 Harness 发行版）
@@ -223,6 +224,28 @@ pub fn report_window_drag_diagnostic(
         .open(log_path)
         .map_err(|error| error.to_string())?;
     writeln!(file, "{entry}").map_err(|error| error.to_string())
+}
+
+/// Display a notification requested by the authenticated embedded DSH frame.
+#[tauri::command]
+pub fn show_system_notification(
+    app_handle: AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    let title = title.replace(['\r', '\n'], " ").chars().take(160).collect::<String>();
+    let body = body.replace(['\r', '\n'], " ").chars().take(2000).collect::<String>();
+    if title.trim().is_empty() {
+        return Err("notification title cannot be empty".to_string());
+    }
+
+    app_handle
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|error| error.to_string())
 }
 
 /// 读取 dsh 服务日志

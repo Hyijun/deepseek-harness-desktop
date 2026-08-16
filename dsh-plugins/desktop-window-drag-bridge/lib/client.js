@@ -9,6 +9,7 @@ window.__ModuleLoader__.load({
     const MINIMIZE_MESSAGE_TYPE = "deepseek-harness-desktop:minimize-window";
     const TOGGLE_MAXIMIZE_MESSAGE_TYPE = "deepseek-harness-desktop:toggle-window-maximize";
     const HIDE_WINDOW_MESSAGE_TYPE = "deepseek-harness-desktop:hide-window";
+    const NATIVE_NOTIFICATION_MESSAGE_TYPE = "deepseek-harness-desktop:show-native-notification";
     const TOGGLE_SIDEBAR_MESSAGE_TYPE = "deepseek-harness-desktop:toggle-sidebar";
     const DIAGNOSTIC_MESSAGE_TYPE = "deepseek-harness-desktop:drag-bridge-diagnostic";
 
@@ -16,6 +17,42 @@ window.__ModuleLoader__.load({
       const message = `${BRIDGE_PREFIX} ${stage}: ${detail}`;
       console.info(message);
       window.parent.postMessage({ type: DIAGNOSTIC_MESSAGE_TYPE, stage, detail }, "*");
+    }
+
+    function installEmbeddedNotificationBridge() {
+      if (window.parent === window || typeof window.Notification === "undefined") return;
+
+      class EmbeddedNotification {
+        static permission = "granted";
+        static requestPermission = () => Promise.resolve("granted");
+
+        constructor(title, options = {}) {
+          this.title = String(title);
+          this.body = typeof options.body === "string" ? options.body : "";
+          this.onclick = null;
+          window.parent.postMessage(
+            {
+              type: NATIVE_NOTIFICATION_MESSAGE_TYPE,
+              title: this.title,
+              body: this.body,
+            },
+            "*",
+          );
+        }
+
+        close() {}
+      }
+
+      try {
+        Object.defineProperty(window, "Notification", {
+          configurable: true,
+          value: EmbeddedNotification,
+          writable: true,
+        });
+        console.info(`${BRIDGE_PREFIX} embedded Notification bridge installed`);
+      } catch (error) {
+        console.error(`${BRIDGE_PREFIX} failed to install embedded Notification bridge`, error);
+      }
     }
 
     function isInteractiveTarget(event) {
@@ -180,6 +217,7 @@ window.__ModuleLoader__.load({
       return React.createElement("span", { ref: markerRef, style: { display: "none" } });
     }
 
+    installEmbeddedNotificationBridge();
     report("module-loaded", "client bundle factory executed");
     exports.inject = ["slots"];
     exports.apply = (ctx) => {
