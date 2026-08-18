@@ -89,7 +89,7 @@ pub fn extract_zip<'a, R: Runtime>(
         } else {
             // 无条件创建所有父目录（避免竞态条件和路径问题）
             if let Some(p) = outpath.parent() {
-                fs::create_dir_all(&p).map_err(|e| {
+                fs::create_dir_all(p).map_err(|e| {
                     log::error!(
                         "Failed to create parent directory {:?}: {} (file: {:?})",
                         p,

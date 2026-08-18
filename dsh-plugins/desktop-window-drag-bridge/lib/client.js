@@ -13,13 +13,7 @@ window.__ModuleLoader__.load({
     const NATIVE_CLIPBOARD_WRITE_MESSAGE_TYPE = "deepseek-harness-desktop:write-native-clipboard";
     const NATIVE_CLIPBOARD_WRITE_RESULT_MESSAGE_TYPE = "deepseek-harness-desktop:native-clipboard-write-result";
     const TOGGLE_SIDEBAR_MESSAGE_TYPE = "deepseek-harness-desktop:toggle-sidebar";
-    const DIAGNOSTIC_MESSAGE_TYPE = "deepseek-harness-desktop:drag-bridge-diagnostic";
-
-    function report(stage, detail) {
-      const message = `${BRIDGE_PREFIX} ${stage}: ${detail}`;
-      console.info(message);
-      window.parent.postMessage({ type: DIAGNOSTIC_MESSAGE_TYPE, stage, detail }, "*");
-    }
+    const DRAG_BRIDGE_READY_MESSAGE_TYPE = "deepseek-harness-desktop:drag-bridge-ready";
 
     function installEmbeddedNotificationBridge() {
       if (window.parent === window || typeof window.Notification === "undefined") return;
@@ -51,7 +45,6 @@ window.__ModuleLoader__.load({
           value: EmbeddedNotification,
           writable: true,
         });
-        console.info(`${BRIDGE_PREFIX} embedded Notification bridge installed`);
       } catch (error) {
         console.error(`${BRIDGE_PREFIX} failed to install embedded Notification bridge`, error);
       }
@@ -98,7 +91,6 @@ window.__ModuleLoader__.load({
           configurable: true,
           value: clipboard,
         });
-        console.info(`${BRIDGE_PREFIX} embedded clipboard bridge installed`);
       } catch (error) {
         console.error(`${BRIDGE_PREFIX} failed to install embedded clipboard bridge`, error);
       }
@@ -196,25 +188,10 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => {
         const header = markerRef.current?.closest("header");
-        if (!header) {
-          report("header-missing", "slot content mounted without a header ancestor");
-          return undefined;
-        }
+        if (!header) return undefined;
 
-        report("header-ready", "attached pointerdown and dblclick listeners");
         const handlePointerDown = (event) => {
-          if (event.button !== 0) {
-            report("pointerdown-ignored", `non-primary button ${event.button}`);
-            return;
-          }
-          if (event.defaultPrevented) {
-            report("pointerdown-ignored", "event was default-prevented");
-            return;
-          }
-          if (isInteractiveTarget(event)) {
-            report("pointerdown-ignored", "interactive target");
-            return;
-          }
+          if (event.button !== 0 || event.defaultPrevented || isInteractiveTarget(event)) return;
 
           const startX = event.clientX;
           const startY = event.clientY;
@@ -232,32 +209,21 @@ window.__ModuleLoader__.load({
             }
             if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 4) return;
             cleanup();
-            report("drag-requested", "pointer moved after primary press; posting native drag request");
             window.parent.postMessage({ type: DRAG_MESSAGE_TYPE }, "*");
           };
 
-          report("drag-armed", "waiting for pointer movement before native drag request");
           header.addEventListener("pointermove", handlePointerMove, true);
           header.addEventListener("pointerup", cleanup, true);
           header.addEventListener("pointercancel", cleanup, true);
         };
         const handleDoubleClick = (event) => {
-          if (event.defaultPrevented) {
-            report("dblclick-ignored", "event was default-prevented");
-            return;
-          }
-          if (isInteractiveTarget(event)) {
-            report("dblclick-ignored", "interactive target");
-            return;
-          }
-          report("maximize-requested", "posting native maximize toggle request");
+          if (event.defaultPrevented || isInteractiveTarget(event)) return;
           window.parent.postMessage({ type: TOGGLE_MAXIMIZE_MESSAGE_TYPE }, "*");
         };
 
         header.addEventListener("pointerdown", handlePointerDown, true);
         header.addEventListener("dblclick", handleDoubleClick, true);
         return () => {
-          report("header-cleanup", "removing pointer listeners");
           header.removeEventListener("pointerdown", handlePointerDown, true);
           header.removeEventListener("dblclick", handleDoubleClick, true);
         };
@@ -268,13 +234,17 @@ window.__ModuleLoader__.load({
 
     installEmbeddedNotificationBridge();
     installEmbeddedClipboardBridge();
-    report("module-loaded", "client bundle factory executed");
     exports.inject = ["slots"];
     exports.apply = (ctx) => {
-      report("plugin-apply", "requesting conversation.session.header.actions slot");
       ctx.inject(["slots"], (scope) => {
-        report("slots-ready", "registering Header bridge component");
-        scope.slots.inject("conversation.session.header.actions", () =>
+        let registeredSlots = 0;
+        const markRegistered = () => {
+          registeredSlots += 1;
+          if (registeredSlots === 2) {
+            window.parent.postMessage({ type: DRAG_BRIDGE_READY_MESSAGE_TYPE }, "*");
+          }
+        };
+        scope.slots.inject("conversation.session.header.actions", () => {
           scope.slots.register(
             {
               name: "conversation.session.header.actions",
@@ -282,9 +252,10 @@ window.__ModuleLoader__.load({
               order: -1000,
             },
             HeaderDragBridge,
-          ),
-        );
-        scope.slots.inject("conversation.session.header.utilities", () =>
+          );
+          markRegistered();
+        });
+        scope.slots.inject("conversation.session.header.utilities", () => {
           scope.slots.register(
             {
               name: "conversation.session.header.utilities",
@@ -292,8 +263,9 @@ window.__ModuleLoader__.load({
               order: 1000,
             },
             HeaderWindowControls,
-          ),
-        );
+          );
+          markRegistered();
+        });
       });
     };
     return module.exports;

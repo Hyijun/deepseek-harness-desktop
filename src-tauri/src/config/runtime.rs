@@ -280,6 +280,21 @@ pub fn get_dsh_binary_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     get_dsh_install_path(app_handle).join(DSH_ENTRY_RELATIVE)
 }
 
+/// pnpm 安装目录
+pub fn get_pnpm_install_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
+    get_base_dir(app_handle).join("dependencies").join(PNPM_CORE_DIR)
+}
+
+/// 捆绑 pnpm CLI 入口（纯 JS 发行，用 node 运行）
+pub fn get_pnpm_binary_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
+    get_pnpm_install_path(app_handle).join(PNPM_ENTRY_RELATIVE)
+}
+
+/// pnpm 下载地址（纯 JS 发行，全平台同一 URL）
+pub fn get_pnpm_download_url() -> String {
+    format!("{}pnpm-{}.tgz", PNPM_BASE_URL, PNPM_VERSION)
+}
+
 /// Harness 发行版清单路径
 pub fn get_dsh_package_json_path<R: Runtime>(app_handle: &AppHandle<R>) -> PathBuf {
     get_dsh_install_path(app_handle).join(DSH_MANIFEST_RELATIVE)

@@ -1,10 +1,26 @@
 use crate::config;
+use crate::service::cli;
 use crate::service::download::{self, Installable};
+use crate::service::plugin;
 use crate::service::workflow;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
+
+/// 按当前设置同步命令行集成（shim + PATH 注册）。
+///
+/// 安装/更新流程的收尾步骤，失败只记日志、不阻断主流程。
+fn sync_cli_link(app_handle: &AppHandle) {
+    let setting = config::get_store_dat_setting(app_handle);
+    let result = if setting.cli_link_enabled {
+        cli::ensure(app_handle)
+    } else {
+        cli::remove(app_handle)
+    };
+    if let Err(e) = result {
+        log::warn!("cli link sync failed: {e}");
+    }
+}
 
 /// 一键安装依赖（Node.js 运行时 + 打包的 Harness 发行版）
 ///
@@ -20,30 +36,37 @@ pub async fn install_dependencies(app_handle: AppHandle) -> Result<(), String> {
     // 不一致时，说明上游 pkg 有更新/修复，需要自动重新下载。
     let node_ok = download::Nodejs.check_installed(&app_handle);
     let dsh_files_ok = download::Dsh.check_installed(&app_handle);
-    let dsh_latest = download::fetch_latest_dsh_pkg_commit(&app_handle).await;
+    let dsh_latest = download::fetch_latest_dsh_pkg_info().await;
 
     let dsh_ok = match &dsh_latest {
-        Ok(commit) => {
+        Ok(latest) => {
             dsh_files_ok
-                && config::get_dsh_pkg_commit(&app_handle).as_deref() == Some(commit.as_str())
+                && config::get_dsh_pkg_commit(&app_handle).as_deref()
+                    == Some(latest.commit.as_str())
         }
         Err(e) => {
             // 网络不可用或 GitHub API 限流时保留本地安装，不阻塞启动
             log::warn!(
-                "Failed to check latest dsh release commit, keeping local install: {}",
+                "Failed to check latest dsh release info, keeping local install: {}",
                 e
             );
             dsh_files_ok
         }
     };
 
-    if node_ok && dsh_ok {
+    // pnpm 是 dsh plugin 子命令的运行时依赖（v0.3.0 起随环境安装）；老版本
+    // 升级后 `installed` 已为 true 会跳过环境安装，捆绑 pnpm 可能从未落盘，
+    // 需一并纳入"已就绪"判定，缺失时由 workflow::install 按任务补齐。
+    let pnpm_ok = download::Pnpm.check_installed(&app_handle);
+
+    if node_ok && dsh_ok && pnpm_ok {
         log::debug!("Dependencies already installed and up to date, skipping installation");
         let mut setting = config::get_store_dat_setting(&app_handle);
         if !setting.installed {
             setting.installed = true;
             config::set_store_dat_setting(&app_handle, setting);
         }
+        sync_cli_link(&app_handle);
         return Ok(());
     }
 
@@ -55,10 +78,15 @@ pub async fn install_dependencies(app_handle: AppHandle) -> Result<(), String> {
     let mut setting = config::get_store_dat_setting(&app_handle);
     setting.installed = true;
     config::set_store_dat_setting(&app_handle, setting);
+    sync_cli_link(&app_handle);
     Ok(())
 }
 
 /// 静默检查是否有新版 Harness 可用（只查不装，供进入页面后后台调用）
+///
+/// 以“实际安装文件”为准核对，而不是只看本地记录：记录可能因安装时 API
+/// 失败或外围途径更新而滞后于文件，此时修正记录并免打扰；同版本热修
+/// （版本相同但 commit 不同）仍正常提示。
 #[tauri::command]
 pub async fn check_dsh_update(
     app_handle: AppHandle,
@@ -69,12 +97,40 @@ pub async fn check_dsh_update(
         return Ok(None);
     }
 
-    let latest = download::fetch_latest_dsh_pkg_info(&app_handle).await?;
-    let current = config::get_dsh_pkg_commit(&app_handle);
-    if current.as_deref() == Some(latest.commit.as_str()) {
-        Ok(None)
+    let latest = download::fetch_latest_dsh_pkg_info().await?;
+    let record_commit = config::get_dsh_pkg_commit(&app_handle);
+    let record_tag = config::get_dsh_pkg_tag(&app_handle);
+    let installed_version = config::get_dsh_version(&app_handle);
+
+    // 老记录没有 tag，反查 pkg 仓库 tags 列表确认记录对应的发布版本；
+    // 反查失败时由 resolve_update 回退到“以实际文件为准”的保守分支
+    let legacy_tags = if record_tag.is_none() {
+        download::fetch_dsh_pkg_tags().await.unwrap_or_default()
     } else {
-        Ok(Some(latest))
+        Vec::new()
+    };
+
+    match download::resolve_update(
+        record_commit.as_deref(),
+        record_tag.as_deref(),
+        installed_version.as_deref(),
+        &latest,
+        &legacy_tags,
+    ) {
+        download::UpdateCheck::UpToDate => Ok(None),
+        download::UpdateCheck::UpdateAvailable => Ok(Some(latest)),
+        download::UpdateCheck::HealUpToDate => {
+            // 安装文件已是最新 release，只是记录滞后：修正记录后下次启动
+            // 直接走 commit 比对快速路径，不再误报
+            log::info!(
+                "Installed Harness files already at latest release, healing stale record: {} ({})",
+                latest.tag,
+                latest.commit
+            );
+            config::set_dsh_pkg_commit(&app_handle, latest.commit.clone());
+            config::set_dsh_pkg_tag(&app_handle, latest.tag.clone());
+            Ok(None)
+        }
     }
 }
 
@@ -100,6 +156,54 @@ pub async fn restart_harness(app_handle: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_dsh_status() -> workflow::status::Status {
     workflow::status::get_status()
+}
+
+/// 获取预装插件列表（含已安装检测结果），首次启动引导界面渲染用
+#[tauri::command]
+pub async fn get_preinstall_plugins(
+    app_handle: AppHandle,
+) -> Result<Vec<plugin::PreinstallPlugin>, String> {
+    Ok(plugin::list(&app_handle))
+}
+
+/// 安装选中的预装插件（`dsh plugin --profile web add <ids...>`），
+/// 进程输出实时通过 `preinstall-log` 事件推送；成功后标记引导完成。
+#[tauri::command]
+pub async fn install_preinstall_plugins(
+    app_handle: AppHandle,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    plugin::install(&app_handle, &ids).await?;
+    let mut setting = config::get_store_dat_setting(&app_handle);
+    setting.preinstall_done = true;
+    config::set_store_dat_setting(&app_handle, setting);
+    Ok(())
+}
+
+/// 取消正在进行的预装插件安装（网络抖动/限流卡住时用户点“取消”）。
+#[tauri::command]
+pub async fn cancel_preinstall_plugins(app_handle: AppHandle) {
+    plugin::cancel(&app_handle).await;
+}
+
+/// 跳过预装插件引导：仅记录状态，不再弹出
+#[tauri::command]
+pub async fn skip_preinstall_plugins(app_handle: AppHandle) -> Result<(), String> {
+    let mut setting = config::get_store_dat_setting(&app_handle);
+    setting.preinstall_done = true;
+    config::set_store_dat_setting(&app_handle, setting);
+    Ok(())
+}
+
+/// 在系统浏览器中打开预装插件的仓库地址（仅允许预装清单内的 id）
+#[tauri::command]
+pub async fn open_preinstall_repo(app_handle: AppHandle, id: String) -> Result<(), String> {
+    let url = plugin::repo_url_of(&app_handle, &id)
+        .ok_or_else(|| format!("PREINSTALL_INVALID_ID: {id}"))?;
+    app_handle
+        .opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 /// 健康检查（通过 Rust 代理，避免 WebView CORS 问题）
@@ -128,9 +232,7 @@ pub async fn update_app_config(
     app_handle: AppHandle,
     port: Option<u16>,
     auto_start: Option<bool>,
-    http_proxy: Option<String>,
-    dsh_environment: Option<Vec<config::DshEnvironmentVariable>>,
-    dsh_arguments: Option<Vec<String>>,
+    cli_link_enabled: Option<bool>,
 ) -> Result<config::Setting, String> {
     let mut setting = config::get_store_dat_setting(&app_handle);
     if let Some(port) = port {
@@ -142,19 +244,24 @@ pub async fn update_app_config(
     if let Some(auto_start) = auto_start {
         setting.auto_start = auto_start;
     }
-    if let Some(http_proxy) = http_proxy {
-        setting.http_proxy = config::normalize_http_proxy(&http_proxy)?;
-    }
-    if let Some(environment) = dsh_environment {
-        config::validate_dsh_environment(&environment)?;
-        setting.dsh_environment = environment;
-    }
-    if let Some(arguments) = dsh_arguments {
-        config::validate_dsh_arguments(&arguments)?;
-        setting.dsh_arguments = arguments;
+    // 命令行集成：先执行文件系统/PATH 操作，成功后再持久化开关，
+    // 失败时配置保持不变，避免"开关已开但 shim 未生成"的不一致状态。
+    if let Some(enabled) = cli_link_enabled {
+        if enabled {
+            cli::ensure(&app_handle)?;
+        } else {
+            cli::remove(&app_handle)?;
+        }
+        setting.cli_link_enabled = enabled;
     }
     config::set_store_dat_setting(&app_handle, setting.clone());
     Ok(setting)
+}
+
+/// 命令行集成状态（shim 文件与 PATH 注册情况）
+#[tauri::command]
+pub fn get_cli_link_status(app_handle: AppHandle) -> Result<cli::CliLinkStatus, String> {
+    Ok(cli::get_status(&app_handle))
 }
 
 /// 在系统浏览器中打开 Harness 界面
@@ -177,89 +284,79 @@ pub async fn copy_service_url(app_handle: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 在系统文件管理器中打开应用安装目录
+/// 将任意文本写入系统剪贴板。
+///
+/// WebView2 下内嵌 iframe 的 `navigator.clipboard.writeText` 权限受限
+/// （跨源 iframe 不自动授予 clipboard-write），由客户端桥把复制请求
+/// 转发到这里走原生剪贴板，保证 dsh 页面内“复制”按钮可用。
 #[tauri::command]
-pub async fn reveal_data_dir(app_handle: AppHandle) -> Result<(), String> {
-    let base_dir = config::get_base_dir(&app_handle);
+pub async fn write_system_clipboard(app_handle: AppHandle, text: String) -> Result<(), String> {
+    app_handle
+        .clipboard()
+        .write_text(text)
+        .map_err(|e| format!("CLIPBOARD_WRITE_FAILED: {e}"))
+}
 
-    if cfg!(windows) {
-        std::process::Command::new("explorer")
-            .arg(&base_dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
-            .arg(&base_dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    } else {
-        std::process::Command::new("xdg-open")
-            .arg(&base_dir)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+/// 记录窗口拖拽桥注入失败（仅失败时上报，正常路径保持静默）。
+///
+/// 客户端插件在 dsh 会话 Header 挂载两个 slot 后发送 ready 心跳；
+/// 壳侧 watchdog 超时未收到心跳时调用本命令，把失败原因写入服务日志，
+/// 供用户在日志面板中排查（不弹 UI，只落日志）。
+#[tauri::command]
+pub fn report_window_drag_injection_failure(
+    app_handle: AppHandle,
+    detail: String,
+) -> Result<(), String> {
+    let detail = detail.replace(['\r', '\n'], " ");
+    let entry = format!("[desktop-window-drag] injection failed: {detail}");
+    log::error!("{entry}");
+
+    let log_path = config::get_service_log_path(&app_handle);
+    if let Some(parent) = log_path.parent() {
+        if std::fs::create_dir_all(parent).is_ok() {
+            use std::io::Write;
+            let _ = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .and_then(|mut file| file.write_all(format!("{entry}\n").as_bytes()));
+        }
     }
     Ok(())
 }
 
-/// Record authenticated renderer diagnostics in the service log panel.
+/// 在系统文件管理器中定位指定文件（Session 日志下载完成后的"在文件夹中显示"）
 #[tauri::command]
-pub fn report_window_drag_diagnostic(
-    app_handle: AppHandle,
-    stage: String,
-    detail: String,
-) -> Result<(), String> {
-    let stage = stage.replace(['\r', '\n'], " ");
-    let detail = detail.replace(['\r', '\n'], " ");
-    let entry = format!("[desktop-window-drag] {stage}: {detail}");
-    log::info!("{entry}");
-
-    let log_path = config::get_service_log_path(&app_handle);
-    if let Some(parent) = log_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    use std::io::Write;
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)
-        .map_err(|error| error.to_string())?;
-    writeln!(file, "{entry}").map_err(|error| error.to_string())
+pub fn reveal_in_folder(path: String) -> Result<(), String> {
+    tauri_plugin_opener::reveal_item_in_dir(&path)
+        .map_err(|e| format!("REVEAL_FAILED: {e}"))
 }
 
-/// Write text requested by the authenticated embedded DSH frame to the system clipboard.
+/// 在系统文件管理器中打开数据目录
 #[tauri::command]
-pub fn write_system_clipboard(app_handle: AppHandle, text: String) -> Result<(), String> {
-    const MAX_CLIPBOARD_BYTES: usize = 16 * 1024 * 1024;
-    if text.len() > MAX_CLIPBOARD_BYTES {
-        return Err("clipboard text exceeds the 16 MiB limit".to_string());
+pub async fn reveal_data_dir(app_handle: AppHandle) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+
+    if cfg!(windows) {
+        std::process::Command::new("explorer")
+            .arg(&app_data_dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+            .arg(&app_data_dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    } else {
+        std::process::Command::new("xdg-open")
+            .arg(&app_data_dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
     }
-
-    app_handle
-        .clipboard()
-        .write_text(text)
-        .map_err(|error| error.to_string())
-}
-
-/// Display a notification requested by the authenticated embedded DSH frame.
-#[tauri::command]
-pub fn show_system_notification(
-    app_handle: AppHandle,
-    title: String,
-    body: String,
-) -> Result<(), String> {
-    let title = title.replace(['\r', '\n'], " ").chars().take(160).collect::<String>();
-    let body = body.replace(['\r', '\n'], " ").chars().take(2000).collect::<String>();
-    if title.trim().is_empty() {
-        return Err("notification title cannot be empty".to_string());
-    }
-
-    app_handle
-        .notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-        .map_err(|error| error.to_string())
+    Ok(())
 }
 
 /// 读取 dsh 服务日志
@@ -296,7 +393,7 @@ pub fn set_language(app_handle: AppHandle, lang: String) {
     setting.language = lang.clone();
     config::set_store_dat_setting(&app_handle, setting);
     config::i18n::set_language(match lang.as_str() {
-        "en" => config::i18n::Lang::En,
+        "en" | "en-US" => config::i18n::Lang::En,
         _ => config::i18n::Lang::Zh,
     });
 }

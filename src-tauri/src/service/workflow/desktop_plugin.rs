@@ -170,6 +170,8 @@ mod tests {
         assert!(client.contains("hide-window"));
         assert!(client.contains("write-native-clipboard"));
         assert!(client.contains("native-clipboard-write-result"));
+        assert!(client.contains("drag-bridge-ready"));
+        assert!(!client.contains("drag-bridge-diagnostic"));
 
         fs::remove_dir_all(root).unwrap();
     }

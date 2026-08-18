@@ -10,7 +10,8 @@ use tauri::AppHandle;
 pub async fn trigger(app_handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let current_status = status::get_status();
 
-    let is_dsh_running = utils::is_dsh_running().await;
+    let port = crate::config::get_store_dat_setting(&app_handle).port;
+    let is_dsh_running = utils::is_dsh_running(port).await;
     log::trace!("DSH status check: dsh_running={}", is_dsh_running);
 
     // 只有当当前状态为运行中时，才更新状态

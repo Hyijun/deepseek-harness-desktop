@@ -1,6 +1,7 @@
 pub mod desktop_plugin;
 pub mod status;
 pub mod utils;
+pub(crate) mod win_inspector;
 #[cfg(windows)]
 pub(crate) mod win_spawn;
 
@@ -9,6 +10,8 @@ use crate::service::download;
 use crate::service::workflow::utils::{is_dsh_running, is_port_in_use, spawn_output_readers};
 use std::collections::HashMap;
 use std::fs;
+// Path 仅被 Windows 专属的 kill_dsh_processes 使用，Unix 构建下不引入
+#[cfg(windows)]
 use std::path::Path;
 use std::process::{Command, Stdio};
 #[cfg(windows)]
@@ -116,9 +119,13 @@ pub async fn start(app_handle: tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
+    // 将桌面客户端桥（窗口拖拽/剪贴板/通知）注入 dsh web profile；
+    // 幂等操作：已有记录时不重复添加。
+    desktop_plugin::ensure_desktop_window_drag_plugin(&app_handle)?;
+
     log::debug!("Checking Harness running status");
     let port_in_use = is_port_in_use(setting.port);
-    let dsh_running = is_dsh_running().await;
+    let dsh_running = is_dsh_running(setting.port).await;
 
     if port_in_use && !dsh_running {
         log::info!("Harness is not running, but port is in use, stopping harness");
@@ -171,10 +178,9 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         log::error!("Harness not installed");
         return Err("HARNESS_NOT_FOUND: Harness not installed".to_string());
     }
-    desktop_plugin::ensure_desktop_window_drag_plugin(&app_handle)?;
 
     // 避免重复启动（配合启动守卫，确保并发调用只拉起一个进程）
-    if is_dsh_running().await {
+    if is_dsh_running(setting.port).await {
         log::info!("Harness is already running, skipping launch");
         return Ok(());
     }
@@ -198,38 +204,40 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         let _ = Command::new("pkill").arg("-9").arg("node").output();
     }
 
-    // DSH_HOME 始终由桌面端控制；其余 DSH 环境变量来自持久化设置。
+    // 构造环境变量：隔离的 $DSH_HOME + 隐私默认（关闭遥测）
     let dsh_home = config::get_dsh_data_path(&app_handle);
     fs::create_dir_all(&dsh_home).map_err(|e| format!("create dsh home failed: {e}"))?;
+
+    // Windows 极简模式修复的自愈：插件已装入 profile 时确保 patch 挂载行与
+    // minimal-win 用户 preset 落盘（幂等）。最佳努力：失败只告警，不阻断启动。
+    if let Err(e) = win_inspector::apply(&app_handle) {
+        log::warn!("win32 terminal support apply failed: {e}");
+    }
     let mut envs: HashMap<String, String> = HashMap::new();
     envs.insert("DSH_HOME".to_string(), dsh_home.to_string_lossy().into_owned());
-    for variable in &setting.dsh_environment {
-        if !variable.name.eq_ignore_ascii_case("DSH_HOME") {
-            envs.insert(variable.name.clone(), variable.value.clone());
-        }
-    }
+    envs.insert("DSH_TELEMETRY_DISABLED".to_string(), "1".to_string());
+    envs.insert("NO_COLOR".to_string(), "1".to_string());
+    envs.insert("DSH_WEB_PORT".to_string(), setting.port.to_string());
 
-    // 扩展 PATH，让 dsh 及其子进程能找到 node，同时保留用户配置的 PATH。
+    // 扩展 PATH，让 dsh 及其子进程能找到 node；Windows 上再注入 Git Bash 的
+    // bin 目录：persistent bash（--noprofile --norc）不执行 profile 脚本、PATH
+    // 完全继承服务进程，若不含 Git 的 usr/bin，ls/sed/find 等 coreutils 全会
+    // `command not found`（MSYS 运行时在部分环境下不会自动补 /usr/bin）。
     if let Some(node_dir) = node_binary_path.parent() {
-        let existing_path = envs
-            .get("PATH")
-            .map(|value| std::ffi::OsString::from(value.as_str()))
-            .or_else(|| std::env::var_os("PATH"));
-        if let Some(existing_path) = existing_path {
+        if let Some(existing_path) = std::env::var_os("PATH") {
+            let git_dirs = win_inspector::git_bash_bin_dirs();
+            // 只打印注入的前缀目录，完整 PATH 太长会刷屏
+            for dir in &git_dirs {
+                log::debug!("harness service PATH prepend: {}", dir.to_string_lossy());
+            }
             let mut paths = vec![node_dir.to_path_buf()];
+            paths.extend(git_dirs);
             paths.extend(std::env::split_paths(&existing_path));
             if let Ok(new_path) = std::env::join_paths(paths) {
                 envs.insert("PATH".to_string(), new_path.to_string_lossy().into_owned());
             }
         }
     }
-
-    let launch_args: Vec<String> = setting
-        .dsh_arguments
-        .iter()
-        .filter(|argument| *argument != "--port" && !argument.starts_with("--port="))
-        .cloned()
-        .collect();
 
     // 日志文件（前端日志面板读取）
     let log_path = config::get_service_log_path(&app_handle);
@@ -244,10 +252,15 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
     let spawn_result = {
         #[cfg(windows)]
         {
-            let mut args: Vec<OsString> = vec![dsh_binary_path.as_os_str().to_os_string()];
-            args.extend(launch_args.iter().map(|value| OsString::from(value.as_str())));
-            args.push(OsString::from("--port"));
-            args.push(OsString::from(setting.port.to_string()));
+            let args: Vec<OsString> = vec![
+                dsh_binary_path.as_os_str().to_os_string(),
+                OsString::from("--profile"),
+                OsString::from("web"),
+                OsString::from("--host"),
+                OsString::from("127.0.0.1"),
+                OsString::from("--port"),
+                OsString::from(setting.port.to_string()),
+            ];
             win_spawn::spawn_with_hidden_console(
                 &node_binary_path,
                 &args,
@@ -260,7 +273,10 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         {
             let mut cmd = Command::new(&node_binary_path);
             cmd.arg(&dsh_binary_path)
-                .args(&launch_args)
+                .arg("--profile")
+                .arg("web")
+                .arg("--host")
+                .arg("127.0.0.1")
                 .arg("--port")
                 .arg(&setting.port.to_string())
                 .envs(&envs)
@@ -287,7 +303,7 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
             tauri::async_runtime::spawn(async move {
                 for _ in 0..15 {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    if is_dsh_running().await {
+                    if is_dsh_running(setting.port).await {
                         break;
                     }
                 }
@@ -331,6 +347,9 @@ pub async fn stop(app_handle: tauri::AppHandle) -> Result<(), String> {
 /// 退出路径上不更新状态、不做异步等待，仅强制结束端口占用者及其进程树，
 /// 以及 AppData 目录下的 node 进程，避免残留进程把原生模块 DLL 锁在内存，
 /// 导致下次启动重新解压失败。
+/// Windows 下需要 app_handle 定位 AppData 目录来清理进程树；
+/// Unix 构建不使用该参数，允许未使用告警以保持签名一致
+#[cfg_attr(not(windows), allow(unused_variables))]
 pub fn stop_on_exit(app_handle: tauri::AppHandle, port: u16) {
     kill_port_holder(port);
     #[cfg(windows)]
@@ -340,7 +359,7 @@ pub fn stop_on_exit(app_handle: tauri::AppHandle, port: u16) {
 /// 安装环境（Node.js 运行时 + 打包的 Harness 发行版）
 pub async fn install(
     app_handle: &tauri::AppHandle,
-    dsh_latest_commit: Option<String>,
+    dsh_latest: Option<download::LatestDshPkg>,
 ) -> Result<(), String> {
     log::info!("Starting installation process");
 
@@ -349,14 +368,14 @@ pub async fn install(
     // 不停止的话覆盖解压必然失败（Windows os error 32）。
     // 注意不能只依赖 HTTP 探测：服务崩溃/失去响应时探测不到，但 node
     // 进程可能仍存活并持有 DLL，因此探测不到时也要强制清理。
-    if is_dsh_running().await {
+    if is_dsh_running(config::get_store_dat_setting(app_handle).port).await {
         log::info!("Stopping running Harness service before installation");
         stop(app_handle.clone()).await?;
     } else {
         log::warn!("Harness service not responding, force cleaning dsh processes");
-        kill_port_holder(config::get_store_dat_setting(&app_handle).port);
+        kill_port_holder(config::get_store_dat_setting(app_handle).port);
         #[cfg(windows)]
-        kill_dsh_processes(&config::get_base_dir(&app_handle));
+        kill_dsh_processes(&config::get_base_dir(app_handle));
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
     }
 
@@ -364,17 +383,19 @@ pub async fn install(
         .get_webview_window("main")
         .ok_or("Failed to get main window")?;
     log::debug!("Main window obtained");
-    let mut tracker = download::ProgressTracker::new(&window, 4);
+    // 3 个任务 × 下载/解压 2 个阶段
+    let mut tracker = download::ProgressTracker::new(&window, 6);
     let tasks: Vec<Box<dyn download::Installable>> =
-        vec![Box::new(download::Nodejs), Box::new(download::Dsh)];
+        vec![Box::new(download::Nodejs), Box::new(download::Dsh), Box::new(download::Pnpm)];
     log::info!("Task list created, {} tasks total", tasks.len());
 
     for (index, task) in tasks.iter().enumerate() {
         log::debug!("Processing task {}/{}", index + 1, tasks.len());
         // 已安装但 commit 与最新 release 不一致时强制重新下载
         let outdated = index == 1
-            && dsh_latest_commit.is_some()
-            && config::get_dsh_pkg_commit(app_handle).as_deref() != dsh_latest_commit.as_deref();
+            && dsh_latest.as_ref().is_some_and(|info| {
+                config::get_dsh_pkg_commit(app_handle).as_deref() != Some(info.commit.as_str())
+            });
         if task.check_installed(app_handle) && !outdated {
             log::debug!(
                 "Task {} already installed and up to date, skipping",
@@ -390,9 +411,9 @@ pub async fn install(
         tracker.start_phase("download", &format!("{} {}", config::i18n::t("install.downloading"), task.title()));
         let url = task.get_download_url()?;
         log::debug!("Download URL: {}", url);
-        let name = url.split('/').last().unwrap().to_string();
+        let name = url.split('/').next_back().unwrap().to_string();
         log::debug!("File name: {}", name);
-        let buffer = download::download_file(&tracker, app_handle, url).await?;
+        let buffer = download::download_file(&tracker, url).await?;
         log::info!("Download completed, file size: {} bytes", buffer.len());
         tracker.end_phase();
 
@@ -404,10 +425,11 @@ pub async fn install(
         log::info!("Extraction completed");
         tracker.end_phase();
 
-        // 记录本次安装对应的 release commit，供下次启动比对
+        // 记录本次安装对应的 release tag 与 commit，供下次启动比对
         if index == 1 {
-            if let Some(commit) = &dsh_latest_commit {
-                config::set_dsh_pkg_commit(app_handle, commit.clone());
+            if let Some(info) = &dsh_latest {
+                config::set_dsh_pkg_commit(app_handle, info.commit.clone());
+                config::set_dsh_pkg_tag(app_handle, info.tag.clone());
             }
         }
     }

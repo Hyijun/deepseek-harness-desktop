@@ -3,9 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::config;
 use crate::service::download::ProgressTracker;
-use tauri::{AppHandle, Runtime};
+use tauri::Runtime;
 
 /// 下载文件到内存
 ///
@@ -17,18 +16,14 @@ use tauri::{AppHandle, Runtime};
 /// 成功返回文件内容 `Ok(Vec<u8>)`，失败返回错误信息
 pub async fn download_file<'a, R: Runtime>(
     tracker: &'a ProgressTracker<'a, R>,
-    app_handle: &AppHandle<R>,
     url: String,
 ) -> Result<Vec<u8>, String> {
     log::info!("Starting file download: {}", url);
     // 创建具备 User-Agent 的客户端
-    let client = config::apply_http_proxy(
-        app_handle,
-        reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (deepseek-harness-desktop)")
-            .connect_timeout(std::time::Duration::from_secs(20)),
-    )?
-    .build()
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (deepseek-harness-desktop)")
+        .connect_timeout(std::time::Duration::from_secs(20))
+        .build()
         .map_err(|e| {
             log::error!("Failed to create HTTP client: {}", e);
             e.to_string()
@@ -230,16 +225,11 @@ pub struct LatestDshPkg {
 ///
 /// 先取最新 release 的 tag_name，再通过 commits 端点把 tag 解析为 commit。
 /// 网络不可用或 API 限流时返回 Err，由调用方决定是否保留本地安装。
-pub async fn fetch_latest_dsh_pkg_info<R: Runtime>(
-    app_handle: &AppHandle<R>,
-) -> Result<LatestDshPkg, String> {
-    let client = config::apply_http_proxy(
-        app_handle,
-        reqwest::Client::builder()
-            .user_agent("deepseek-harness-desktop")
-            .timeout(std::time::Duration::from_secs(5)),
-    )?
-    .build()
+pub async fn fetch_latest_dsh_pkg_info() -> Result<LatestDshPkg, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("deepseek-harness-desktop")
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     // 1. 最新 release 的 tag_name
@@ -280,9 +270,237 @@ pub async fn fetch_latest_dsh_pkg_info<R: Runtime>(
     })
 }
 
-/// 查询 GitHub 上最新 Harness 发行版对应的 commit hash
-pub async fn fetch_latest_dsh_pkg_commit<R: Runtime>(
-    app_handle: &AppHandle<R>,
-) -> Result<String, String> {
-    fetch_latest_dsh_pkg_info(app_handle).await.map(|info| info.commit)
+/// 从 release tag 中解析版本号：`dsh-0.1.0-rc.7-32054485373` → `0.1.0-rc.7`。
+///
+/// tag 约定为 `dsh-<version>-<commit 后缀>`；格式不符时返回 `None`，
+/// 调用方据此回退到仅 commit 比对的旧行为，避免误判。
+pub fn parse_version_from_tag(tag: &str) -> Option<String> {
+    let version = tag.strip_prefix("dsh-")?.rsplit_once('-')?.0;
+    (!version.is_empty()).then(|| version.to_string())
+}
+
+/// 更新判定结果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateCheck {
+    /// 无更新
+    UpToDate,
+    /// 无更新，但本地记录滞后于实际安装文件，需要修正记录
+    HealUpToDate,
+    /// 有更新
+    UpdateAvailable,
+}
+
+/// 结合本地记录与实际安装文件判定是否有新版 Harness 可用。
+///
+/// 本地记录（release commit + tag）由安装流程写入；但当安装文件被外围途径
+/// 更新、或安装时 GitHub API 失败未落盘，记录会滞后于文件，造成每次都误报
+/// 更新。这里以磁盘上实际的 `@deepseek-ai/dsh` 版本为准核对：
+/// - commit 一致 → 无更新；
+/// - 文件版本与最新 release 不同 → 有更新；
+/// - 文件版本相同：记录 tag 版本也相同 → 同版本热修 → 有更新；
+///   记录 tag 版本更旧（或记录无 tag，经 `legacy_tags` 反查）→ 记录滞后 → 修正记录。
+///
+/// `legacy_tags` 是 pkg 仓库的 tags 列表（tag, commit），仅用于反查历史安装
+/// 记录的版本；反查不到时以实际文件为准（视为记录滞后）。
+pub fn resolve_update(
+    record_commit: Option<&str>,
+    record_tag: Option<&str>,
+    installed_version: Option<&str>,
+    latest: &LatestDshPkg,
+    legacy_tags: &[(String, String)],
+) -> UpdateCheck {
+    if record_commit == Some(latest.commit.as_str()) {
+        return UpdateCheck::UpToDate;
+    }
+    let (Some(installed), Some(latest_version)) =
+        (installed_version, parse_version_from_tag(&latest.tag))
+    else {
+        // 版本信息不可解析时回退到旧行为：记录不一致即视为有更新
+        return UpdateCheck::UpdateAvailable;
+    };
+    if installed != latest_version {
+        return UpdateCheck::UpdateAvailable;
+    }
+    // 文件已经是“最新版本”，此时需要甄别记录是否滞后
+    match record_tag.and_then(parse_version_from_tag) {
+        Some(record_version) if record_version < latest_version => UpdateCheck::HealUpToDate,
+        Some(_) => UpdateCheck::UpdateAvailable,
+        None => match legacy_tags
+            .iter()
+            .find(|(_, commit)| Some(commit.as_str()) == record_commit)
+        {
+            Some((tag, _)) => match parse_version_from_tag(tag) {
+                Some(record_version) if record_version < latest_version => UpdateCheck::HealUpToDate,
+                // 反查到的版本与最新版本相同（或解析失败）→ 视为同版本热修
+                _ => UpdateCheck::UpdateAvailable,
+            },
+            // 无法考证记录对应的版本 → 以实际安装文件为准，修正记录
+            None => UpdateCheck::HealUpToDate,
+        },
+    }
+}
+
+/// 拉取 pkg 仓库的 release tag 列表（tag, commit），用于反查历史记录对应的版本。
+///
+/// 仅在更新判定需要反查“无 tag 的老记录”时调用，失败时由调用方回退到
+/// “以实际文件为准”的保守分支。
+pub async fn fetch_dsh_pkg_tags() -> Result<Vec<(String, String)>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("deepseek-harness-desktop")
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let tags: serde_json::Value = client
+        .get(format!("{}/tags?per_page=100", DSH_PKG_GITHUB_API))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to request release tags: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("Release tags request failed: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse release tags response: {}", e))?;
+
+    Ok(tags
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.get("name")?.as_str()?.to_string();
+            let sha = entry.get("commit")?.get("sha")?.as_str()?.to_string();
+            Some((name, sha))
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn latest(tag: &str, commit: &str) -> LatestDshPkg {
+        LatestDshPkg {
+            tag: tag.to_string(),
+            commit: commit.to_string(),
+        }
+    }
+
+    #[test]
+    fn parse_version_from_tag_formats() {
+        assert_eq!(
+            parse_version_from_tag("dsh-0.1.0-rc.7-32054485373").as_deref(),
+            Some("0.1.0-rc.7")
+        );
+        assert_eq!(
+            parse_version_from_tag("dsh-0.1.0-rc.6-31773193667").as_deref(),
+            Some("0.1.0-rc.6")
+        );
+        assert_eq!(parse_version_from_tag("dsh-0.2.0"), None);
+        assert_eq!(parse_version_from_tag("0.1.0-rc.7-abc"), None);
+        assert_eq!(parse_version_from_tag(""), None);
+    }
+
+    #[test]
+    fn resolve_matching_commit_is_up_to_date() {
+        let latest = latest("dsh-0.1.0-rc.7-32054485373", "6c659bb2636b3ad396a204c4c6ff110276fa3a09");
+        let decision = resolve_update(
+            Some("6c659bb2636b3ad396a204c4c6ff110276fa3a09"),
+            Some("dsh-0.1.0-rc.7-32054485373"),
+            Some("0.1.0-rc.7"),
+            &latest,
+            &[],
+        );
+        assert_eq!(decision, UpdateCheck::UpToDate);
+    }
+
+    #[test]
+    fn resolve_different_installed_version_is_update() {
+        let latest = latest("dsh-0.1.0-rc.7-32054485373", "6c659bb2636b3ad396a204c4c6ff110276fa3a09");
+        let decision = resolve_update(
+            Some("564019027fd9469991aef6e57bb0a96325491c4e"),
+            Some("dsh-0.1.0-rc.6-31773193667"),
+            Some("0.1.0-rc.6"),
+            &latest,
+            &[],
+        );
+        assert_eq!(decision, UpdateCheck::UpdateAvailable);
+    }
+
+    #[test]
+    fn resolve_same_version_hotfix_is_update() {
+        // 记录正确（与文件一致），最新 release 是同版本热修：应提示更新
+        let latest = latest("dsh-0.1.0-rc.6-31773193667", "564019027fd9469991aef6e57bb0a96325491c4e");
+        let decision = resolve_update(
+            Some("995e261e117617780dc50db16c70d445255978fd"),
+            Some("dsh-0.1.0-rc.6-31762761461"),
+            Some("0.1.0-rc.6"),
+            &latest,
+            &[],
+        );
+        assert_eq!(decision, UpdateCheck::UpdateAvailable);
+    }
+
+    #[test]
+    fn resolve_stale_record_behind_files_heals() {
+        // 用户现场：记录停留在 rc.6，文件已是 rc.7 → 修正记录、免打扰
+        let latest = latest("dsh-0.1.0-rc.7-32054485373", "6c659bb2636b3ad396a204c4c6ff110276fa3a09");
+        let decision = resolve_update(
+            Some("564019027fd9469991aef6e57bb0a96325491c4e"),
+            Some("dsh-0.1.0-rc.6-31773193667"),
+            Some("0.1.0-rc.7"),
+            &latest,
+            &[],
+        );
+        assert_eq!(decision, UpdateCheck::HealUpToDate);
+    }
+
+    #[test]
+    fn resolve_legacy_record_without_tag_heals_via_tags_lookup() {
+        // 老记录没有 tag：反查 tags 列表发现记录版本低于文件版本 → 修正
+        let latest = latest("dsh-0.1.0-rc.7-32054485373", "6c659bb2636b3ad396a204c4c6ff110276fa3a09");
+        let tags = vec![(
+            "dsh-0.1.0-rc.6-31773193667".to_string(),
+            "564019027fd9469991aef6e57bb0a96325491c4e".to_string(),
+        )];
+        let decision = resolve_update(
+            Some("564019027fd9469991aef6e57bb0a96325491c4e"),
+            None,
+            Some("0.1.0-rc.7"),
+            &latest,
+            &tags,
+        );
+        assert_eq!(decision, UpdateCheck::HealUpToDate);
+    }
+
+    #[test]
+    fn resolve_legacy_same_version_still_updates() {
+        // 老记录无 tag 但反查为同版本热修：仍应提示
+        let latest = latest("dsh-0.1.0-rc.6-31773193667", "564019027fd9469991aef6e57bb0a96325491c4e");
+        let tags = vec![(
+            "dsh-0.1.0-rc.6-31762761461".to_string(),
+            "995e261e117617780dc50db16c70d445255978fd".to_string(),
+        )];
+        let decision = resolve_update(
+            Some("995e261e117617780dc50db16c70d445255978fd"),
+            None,
+            Some("0.1.0-rc.6"),
+            &latest,
+            &tags,
+        );
+        assert_eq!(decision, UpdateCheck::UpdateAvailable);
+    }
+
+    #[test]
+    fn resolve_without_version_metadata_falls_back_to_update() {
+        // 最新 tag 无法解析出版本时回退旧行为：记录不一致即提示
+        let latest = latest("0.1.0-rc.7", "6c659bb2636b3ad396a204c4c6ff110276fa3a09");
+        let decision = resolve_update(
+            Some("564019027fd9469991aef6e57bb0a96325491c4e"),
+            None,
+            Some("0.1.0-rc.7"),
+            &latest,
+            &[],
+        );
+        assert_eq!(decision, UpdateCheck::UpdateAvailable);
+    }
 }

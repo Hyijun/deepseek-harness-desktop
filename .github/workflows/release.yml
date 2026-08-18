@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       platform_filter:
-        description: '选择需要打包的平台 (仅在手动触发时生效)'
+        description: 选择需要打包的平台 (仅在手动触发时生效)
         required: true
-        default: 'all'
+        default: all
         type: choice
         options:
           - all
@@ -49,8 +49,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: 'pnpm-lock.yaml'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Generate GitHub Changelog
         id: changelogithub
@@ -84,18 +84,18 @@ jobs:
       matrix:
         include:
           - id: macos-aarch64
-            platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
-            arch: 'aarch64'
+            platform: macos-latest
+            args: --target aarch64-apple-darwin
+            arch: aarch64
           - id: macos-x86_64
-            platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
-            arch: 'x86_64'
+            platform: macos-latest
+            args: --target x86_64-apple-darwin
+            arch: x86_64
           - id: windows
-            platform: 'windows-latest'
+            platform: windows-latest
             args: ''
           - id: linux
-            platform: 'ubuntu-latest'
+            platform: ubuntu-latest
             args: ''
 
     runs-on: ${{ matrix.platform }}
@@ -133,8 +133,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
-          cache-dependency-path: 'pnpm-lock.yaml'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install Rust stable
         if: steps.check.outputs.should_run == 'true'
@@ -180,7 +180,7 @@ jobs:
           TAURI_BUNDLE_TARGETS: ${{ matrix.platform == 'ubuntu-latest' && 'appimage' || 'all' }}
         with:
           tagName: ${{ format('test-{0}-{1}', github.ref_name, github.run_number) }}
-          releaseName: "DeepSeek Harness Desktop 手动测试版 (构建 #${{ github.run_number }})"
+          releaseName: 'DeepSeek Harness Desktop 手动测试版 (构建 #${{ github.run_number }})'
           releaseBody: |
             DeepSeek Harness Desktop 手动触发的单平台/全平台测试构建。
             触发分支: `${{ github.ref_name }}`

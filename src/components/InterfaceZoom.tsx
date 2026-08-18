@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useI18n } from "../i18n/context";
 
 const STORAGE_KEY = "interfaceZoom";
 const MIN_ZOOM = 0.5;
@@ -37,7 +37,7 @@ function readStoredZoom(): number {
 }
 
 export default function InterfaceZoom() {
-  const { t } = useI18n();
+  const { t } = useTranslation();
   const [notice, setNotice] = useState<ZoomNotice | null>(null);
   const previousPercent = useRef<number | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

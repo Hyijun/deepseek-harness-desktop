@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
-/// 检查 Harness 是否真正在运行
-pub async fn is_dsh_running() -> bool {
+/// 检查 Harness 是否真正在运行（探测指定端口，随配置端口联动）
+pub async fn is_dsh_running(port: u16) -> bool {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()
@@ -17,8 +17,7 @@ pub async fn is_dsh_running() -> bool {
         None => return false,
     };
 
-    use crate::config::get_dsh_base_url;
-    let url = format!("{}/", get_dsh_base_url());
+    let url = format!("{}/", crate::config::get_dsh_service_url(port));
 
     // 发送请求并判断是否就绪
     let check_status = async {
@@ -40,10 +39,7 @@ pub fn is_port_in_use(port: u16) -> bool {
         "127.0.0.1:0".parse().unwrap()
     });
 
-    match TcpStream::connect_timeout(&addr, Duration::from_millis(100)) {
-        Ok(_) => true,   // 连接成功，端口被占用（有服务在监听）
-        Err(_) => false, // 连接失败或超时，端口未被占用
-    }
+    TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok()
 }
 
 /// 在独立线程中读取子进程的输出，同时写入日志文件

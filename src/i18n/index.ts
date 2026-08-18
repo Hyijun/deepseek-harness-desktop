@@ -1,8 +1,22 @@
-import { Language, Translations } from "./types";
-import { en } from "./en";
-import { zh } from "./zh";
+import i18next from 'i18next'
+import { initReactI18next } from 'react-i18next'
+import { languageDetector } from './index.detector'
+import { resources } from './index.resource'
 
-export const translations: Record<Language, Translations> = { en, zh };
-
-export { type Language, type Translations };
-export { en, zh };
+export const i18n = i18next
+  .use(languageDetector)
+  .use(initReactI18next)
+  .init({
+    fallbackLng: {
+      'en-*': ['en-US'],
+      'zh-*': ['zh-CN'],
+      'default': ['en-US'],
+    },
+    resources,
+    interpolation: { escapeValue: false },
+    react: { useSuspense: false },
+    // 仅使用扁平 dot-notation key（见 AGENTS.md），禁用嵌套解析
+    keySeparator: false,
+    nsSeparator: false,
+    initAsync: false,
+  })

@@ -1,93 +1,52 @@
 <p align="center">
   <a href="https://github.com/hairyf/deepseek-harness-desktop">
-    <img src="public/favicon.svg" width="120" alt="DeepSeek Harness Desktop" />
+    <img src="public/favicon.svg" width="96" alt="DeepSeek Harness Desktop" />
   </a>
 </p>
 
 <h1 align="center">DeepSeek Harness Desktop</h1>
 
 <p align="center">
-  <em>A one-click desktop app for <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a> — run the full agent harness locally without installing Node.js, pnpm, or Docker.</em>
+  Run <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a> on your desktop, instantly —<br />
+  no Node.js, no pnpm, no Docker. Download, install, go.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.8-4D6BFE?style=flat-square" alt="version 0.1.8" />
-  <img src="https://img.shields.io/github/v/release/hairyf/deepseek-harness-desktop?style=flat-square" alt="latest release" />
-  <img src="https://img.shields.io/github/downloads/hairyf/deepseek-harness-desktop/total?style=flat-square" alt="downloads" />
-  <img src="https://img.shields.io/github/stars/hairyf/deepseek-harness-desktop?style=flat-square" alt="GitHub stars" />
-  <img src="https://img.shields.io/github/license/hairyf/deepseek-harness-desktop?style=flat-square" alt="MIT license" />
-  <img src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white" alt="Tauri 2" />
+  <a href="https://github.com/hairyf/deepseek-harness-desktop/releases">
+    <img src="https://img.shields.io/github/v/release/hairyf/deepseek-harness-desktop?style=flat-square&label=release&color=4D6BFE" alt="Release" />
+  </a>
+  <img src="https://img.shields.io/github/downloads/hairyf/deepseek-harness-desktop/total?style=flat-square&label=downloads&color=4D6BFE" alt="Downloads" />
+  <img src="https://img.shields.io/github/stars/hairyf/deepseek-harness-desktop?style=flat-square&label=stars&color=4D6BFE" alt="Stars" />
+  <img src="https://img.shields.io/github/license/hairyf/deepseek-harness-desktop?style=flat-square&label=license&color=4D6BFE" alt="MIT License" />
   <img src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-black?style=flat-square" alt="Windows | macOS | Linux" />
 </p>
 
 <p align="center">
-  <samp>
-    <strong>English</strong> ·
-    <a href="./README.zh.md">中文</a>
-  </samp>
+  <samp><strong>English</strong> · <a href="./README.zh.md">中文</a></samp>
 </p>
 
-> **Status: developer preview.** The upstream `dsh` is still iterating rapidly with compatibility-breaking changes; this project tracks it closely.
+![Preview](docs/hero.png)
 
 ## Features
 
-- **One-click install** — No Node.js / pnpm / Docker needed; bundles the Harness kernel and a Node runtime with fully automatic first-run setup.
-- **Self-healing updates** — Syncs to the latest release on every launch, with a silent "Update Now / Later" prompt when a newer version is found.
-- **Lightweight & cross-platform** — A Tauri 2 shell with smaller installers and lower RAM; native windows on Windows / macOS / Linux with a bilingual UI.
-- **Embedded web UI** — The full Harness interface runs in-window, with a sidebar for service status, port, logs, auto-start, open in browser, data folder and language.
-
-> **Why Tauri and not Electron?** The same features run lighter: a smaller installer and lower idle RAM, with native window controls that stay snappy — important for a local agent host you may keep open all day. The embedded WebView2/WebKit (not a bundled Chromium) also shrinks the install footprint.
-
-## Preview
-
-![DeepSeek Harness Desktop](docs/preivew.png)
+- ⚡️ **Zero setup** — First launch bootstraps the bundled Node runtime and Harness core automatically; a compatible local Node / Pnpm setup is reused as-is when present.
+- 🔄 **Self-healing core** — Every launch syncs with the latest upstream Harness release, so upstream fixes reach you without reinstalling.
+- 🔒 **Local & private by default** — Runs on `127.0.0.1:3080`. Profiles, sessions and settings stay on your machine; telemetry is off by default.
+- 🪶 **Native & lightweight** — A Tauri 2 shell (not Electron): smaller installers, lower memory, native windows. Windows / macOS / Linux, bilingual UI.
+- ⌨️ **CLI ready** — Registers `dsh` commands (`*/bin`) after install, ready in a new terminal.
+- 🧭 **First-run wizard** — On first launch, pick the recommended plugins (e.g. the dsh-market plugin store) and watch the install stream in real time; skip anytime and reopen later from the sidebar.
 
 ## Quick Start
 
-1. Download the installer for your platform from the [Releases](https://github.com/hairyf/deepseek-harness-desktop/releases) page.
-2. Install and launch the app.
-3. On the first run the app installs its dependencies: if a compatible Node.js (v22.15.0+ / v23.8.0+) is already on your machine it is reused as-is; otherwise the Node.js runtime and the prebuilt Harness bundle are downloaded (a few hundred MB in total). When setup finishes, the embedded Harness UI opens at `http://127.0.0.1:3080`.
+Download the installer for your platform from [Releases](https://github.com/hairyf/deepseek-harness-desktop/releases), install, and launch.
 
-> First run requires a network connection. Everything after that runs locally. Once installed, later launches skip the setup screens and boot straight into the harness; a silent prompt appears when a newer Harness release is available.
+The first run downloads the Node runtime and Harness core (~a few hundred MB) and takes you straight into the harness at `http://127.0.0.1:3080`. Everything after that runs locally — no network required.
 
-### Requirements
+**Requirements:** Windows 10+ (64-bit) · macOS 10.15+ · Linux (AppImage) · network on first launch
 
-- Windows 10+ (64-bit)
-- macOS 10.15+
-- Linux (mainstream distributions that support AppImage)
-- Network on first launch
+## Dev
 
-The app bundles Node.js **v22.22.0 LTS**, which satisfies the Harness requirement of **v22.15.0+ or v23.8.0+**. On first launch it first checks for a local Node.js installation: any compatible version is reused directly and the bundled runtime download is skipped.
-
-## Development
-
-### Prerequisites
-
-- Node.js 20+
-- Rust 1.77+
-- pnpm 9+
-- Platform build toolchain (Windows: MSVC + WebView2; macOS: Xcode CLT; Linux: WebKit2GTK)
-
-### Run in dev mode
-
-```bash
-git clone https://github.com/hairyf/deepseek-harness-desktop.git
-cd deepseek-harness-desktop
-pnpm install
-pnpm tauri dev
-```
-
-### Build installers
-
-```bash
-pnpm tauri build
-```
-
-### Regenerate icons
-
-```bash
-pnpm icons
-```
+Want to get involved in the development? See [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md).
 
 ## How It Works
 
@@ -114,53 +73,25 @@ pnpm icons
         http://127.0.0.1:3080/  ← embedded UI
 ```
 
-- The prebuilt Harness bundle is published by [deepseek-harness-pkg](https://github.com/hairyf/deepseek-harness-pkg); see [docs/PKG-CONTRACT.md](docs/PKG-CONTRACT.md) for the release contract.
-- On every launch the app fetches the latest release commit from `deepseek-harness-pkg` and re-downloads the bundle when the installed one is outdated (the local install is kept when GitHub is unreachable).
-- Full architecture notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The prebuilt Harness bundle is published by [deepseek-harness-pkg](https://github.com/hairyf/deepseek-harness-pkg). Every launch diffs the installed bundle against the latest release and re-downloads when outdated — keeping the local install when GitHub is unreachable.
 
-## Data Directory
+## Notes
 
-The data directory follows the Tauri bundle identifier (`io.github.hairyf.deepseek-harness-desktop`):
+> [!WARNING]
+> **Developer preview** — upstream `dsh` is evolving fast with breaking changes; this project tracks it closely.
 
-- Windows: `%APPDATA%\io.github.hairyf.deepseek-harness-desktop\`
-- macOS: `~/Library/Application Support/io.github.hairyf.deepseek-harness-desktop/`
-- Linux: `~/.local/share/io.github.hairyf.deepseek-harness-desktop/`
+> [!IMPORTANT]
+> **macOS Gatekeeper** — the app is not notarized; allow it once via System Settings → Privacy & Security → Open Anyway.
 
-It contains:
+> [!NOTE]
+> **Security** — `dsh` can execute code locally. For learning / research / testing only; run it in a trusted, isolated environment.
 
-- `runtime/` — bundled Node.js runtime
-- `dependencies/dsh/` — extracted Harness bundle
-- `data/dsh/` — Harness user data (`$DSH_HOME`: profiles, sessions, settings)
-- `logs/` — app and dsh service logs
-- `.store.dat` — desktop settings (port, auto-start, language)
+## Related
 
-## FAQ
-
-- **Port 3080 is already in use?** Change the port in the sidebar settings and restart the service.
-- **What happens during the first-time setup?** The sidebar shows the install log and the live service log.
-- **Why does the app download so much on first launch?** It downloads the Node.js runtime and the prebuilt Harness bundle (a few hundred MB) once; afterwards everything runs offline.
-- **Why does the app contact GitHub on every launch?** It compares the installed Harness bundle against the latest release commit and re-downloads automatically when they differ, so upstream fixes arrive without a manual reinstall. If GitHub is unreachable, the local install is kept as-is.
-- **How do updates work after the first install?** Later launches skip setup, check in the background for a newer release, and show a small "Update Now / Later" prompt — updating re-downloads the bundle and restarts the service.
-
-## Security Notes
-
-- This project is for personal learning, research, and testing only — please do not use it commercially.
-- `dsh` is an agent harness with **local code execution capability**. Run it only in a trusted, isolated environment, and never import untrusted configurations or plugins from unknown sources.
-- The developers are not liable for any data loss or security issues arising from the use of this project.
-
-## Related Projects
-
-| Project | Purpose |
-| --- | --- |
-| [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | The upstream `dsh` (CLI + web UI + plugin architecture) |
-| [deepseek-harness-pkg](https://github.com/hairyf/deepseek-harness-pkg) | Prebuilt Harness bundles consumed by this app |
-| [n8n-desktop](https://github.com/tangtao646/n8n-desktop) | Reference implementation for one-click local desktop apps |
-
-## Acknowledgements
-
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) — the upstream project
+- [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) — the upstream `dsh` agent platform
+- [deepseek-harness-pkg](https://github.com/hairyf/deepseek-harness-pkg) — prebuilt Harness bundles consumed by this app
+- [dsh-market](https://github.com/dsh-market/dsh-market) — the plugin market offered as a recommended preinstall on first run
 - [n8n-desktop](https://github.com/tangtao646/n8n-desktop) — reference implementation
-- [Tauri](https://tauri.app/) — the desktop framework
 
 ## License
 
