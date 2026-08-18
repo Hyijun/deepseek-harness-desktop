@@ -13,6 +13,8 @@ export interface PreinstallPlugin {
   recommended: boolean
   /** “修复”类项（Windows 极简模式修复）：黄色 chip，默认勾选 */
   fix: boolean
+  /** 桌面端内置插件：随二进制自部署并常驻，只读展示、不可勾选 */
+  builtin: boolean
   installed: boolean
 }
 

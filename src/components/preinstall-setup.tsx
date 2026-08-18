@@ -25,6 +25,20 @@ function PluginRow({ plugin, checked, disabled, onToggle, onOpenRepo }: {
 }) {
   const { t } = useTranslation()
 
+  // 内置插件：随桌面端二进制自部署并常驻，只读展示，不参与勾选/安装
+  if (plugin.builtin) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-3">
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium text-ink">
+          <span className="truncate">{plugin.name}</span>
+          <Chip size="sm" variant="soft" color="default" className="font-medium">
+            {t('preinstall.builtin')}
+          </Chip>
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div className="flex items-center justify-between gap-3 border-b border-line/40 px-4 py-3 last:border-b-0">
       <Checkbox
@@ -138,10 +152,12 @@ export default function PreinstallSetup() {
   // 派生计算而非在加载回调里 setState，避免与 store 的加载去重守卫竞争，
   // 保证插件到位后默认勾选必定生效（用户手动调整后以用户选择为准）。
   const effectiveSelected = !touched
-    ? new Set(preinstall.plugins.filter(p => !p.installed && (p.recommended || p.fix)).map(p => p.id))
+    ? new Set(preinstall.plugins.filter(p => !p.installed && !p.builtin && (p.recommended || p.fix)).map(p => p.id))
     : selected
 
   function toggle(id: string, checked: boolean) {
+    if (preinstall.plugins.some(p => p.id === id && p.builtin))
+      return
     setTouched(true)
     setSelected((prev) => {
       const next = new Set(prev)
@@ -170,8 +186,8 @@ export default function PreinstallSetup() {
   }
 
   // 可选中的插件（未安装项）勾选数，用于禁用"确定"
-  const selectableCount = preinstall.plugins.filter(p => !p.installed).length
-  const selectedCount = [...effectiveSelected].filter(id => preinstall.plugins.some(p => p.id === id && !p.installed)).length
+  const selectableCount = preinstall.plugins.filter(p => !p.installed && !p.builtin).length
+  const selectedCount = [...effectiveSelected].filter(id => preinstall.plugins.some(p => p.id === id && !p.installed && !p.builtin)).length
   const installing = preinstall.installing
 
   return (

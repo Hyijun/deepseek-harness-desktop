@@ -119,7 +119,7 @@ pub fn build_main_window(app: &tauri::AppHandle<Wry>) -> tauri::Result<tauri::We
             .inner_size(1280.0, 840.0)
             .min_inner_size(860.0, 620.0)
             .resizable(true)
-            .decorations(true)
+            .decorations(false)
             // 恢复 iframe 内 HTML5 拖拽（拖入图片/拖动元素）：
             // Tauri 默认注册 wry drag_drop_handler → WebView2 SetAllowExternalDrop(false)
             // 并注入 IDropTarget 接管拖放，iframe 内拖拽被禁用。
@@ -201,7 +201,6 @@ pub fn handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
         crate::bridge::cmd::read_service_logs,
         crate::bridge::cmd::clear_service_logs,
         crate::bridge::cmd::set_language,
-        crate::bridge::cmd::toggle_sidebar,
         crate::bridge::cmd::get_dsh_theme,
         crate::desktop::notification::show_native_notification,
     ]
@@ -212,6 +211,8 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .setup(|app| {
             let app_handle = app.handle().clone();
+            crate::config::initialize_base_dir(&app_handle);
+            crate::config::migrate_legacy_webview_data(&app_handle);
             build_main_window(&app_handle)?;
             tray(&app_handle)?;
             setup(app_handle.clone());
@@ -231,8 +232,6 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_notification::init())
         // FS plugin
         .plugin(tauri_plugin_fs::init())
-        // Simple Store plugin
-        .plugin(tauri_plugin_store::Builder::new().build())
         // Clipboard plugin
         .plugin(tauri_plugin_clipboard_manager::init())
 }

@@ -232,6 +232,9 @@ pub async fn update_app_config(
     app_handle: AppHandle,
     port: Option<u16>,
     auto_start: Option<bool>,
+    http_proxy: Option<String>,
+    dsh_environment: Option<Vec<config::DshEnvironmentVariable>>,
+    dsh_arguments: Option<Vec<String>>,
     cli_link_enabled: Option<bool>,
 ) -> Result<config::Setting, String> {
     let mut setting = config::get_store_dat_setting(&app_handle);
@@ -243,6 +246,17 @@ pub async fn update_app_config(
     }
     if let Some(auto_start) = auto_start {
         setting.auto_start = auto_start;
+    }
+    if let Some(http_proxy) = http_proxy {
+        setting.http_proxy = config::normalize_http_proxy(&http_proxy)?;
+    }
+    if let Some(environment) = dsh_environment {
+        config::validate_dsh_environment(&environment)?;
+        setting.dsh_environment = environment;
+    }
+    if let Some(arguments) = dsh_arguments {
+        config::validate_dsh_arguments(&arguments)?;
+        setting.dsh_arguments = arguments;
     }
     // 命令行集成：先执行文件系统/PATH 操作，成功后再持久化开关，
     // 失败时配置保持不变，避免"开关已开但 shim 未生成"的不一致状态。
@@ -396,12 +410,6 @@ pub fn set_language(app_handle: AppHandle, lang: String) {
         "en" | "en-US" => config::i18n::Lang::En,
         _ => config::i18n::Lang::Zh,
     });
-}
-
-/// 切换侧边栏（布局状态保存在前端，保留该命令以对齐参考实现）
-#[tauri::command]
-pub async fn toggle_sidebar() -> Result<bool, String> {
-    Ok(true)
 }
 
 /// 当前 dsh 主题偏好（light/dark/system），用于让桌面外壳跟随内嵌页面主题

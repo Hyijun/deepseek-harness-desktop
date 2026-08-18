@@ -164,10 +164,13 @@ mod tests {
         deploy_package(&package_dir).unwrap();
         assert!(package_dir.join("package.json").is_file());
         let client = fs::read_to_string(package_dir.join("lib/client.js")).unwrap();
+        assert!(client.contains("conversation.session.header.actions"));
+        assert!(client.contains("desktop-window-drag-bridge"));
         assert!(client.contains("conversation.session.header.utilities"));
         assert!(client.contains("desktop-window-controls"));
         assert!(client.contains("minimize-window"));
         assert!(client.contains("hide-window"));
+        assert!(!client.contains("toggle-sidebar"));
         assert!(client.contains("write-native-clipboard"));
         assert!(client.contains("native-clipboard-write-result"));
         assert!(client.contains("drag-bridge-ready"));

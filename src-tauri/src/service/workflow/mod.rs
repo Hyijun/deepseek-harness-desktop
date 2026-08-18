@@ -215,16 +215,28 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
     }
     let mut envs: HashMap<String, String> = HashMap::new();
     envs.insert("DSH_HOME".to_string(), dsh_home.to_string_lossy().into_owned());
-    envs.insert("DSH_TELEMETRY_DISABLED".to_string(), "1".to_string());
-    envs.insert("NO_COLOR".to_string(), "1".to_string());
-    envs.insert("DSH_WEB_PORT".to_string(), setting.port.to_string());
+    for variable in &setting.dsh_environment {
+        if !variable.name.eq_ignore_ascii_case("DSH_HOME") {
+            envs.insert(variable.name.clone(), variable.value.clone());
+        }
+    }
+    if !setting.http_proxy.is_empty() {
+        envs.entry("HTTP_PROXY".to_string())
+            .or_insert_with(|| setting.http_proxy.clone());
+        envs.entry("HTTPS_PROXY".to_string())
+            .or_insert_with(|| setting.http_proxy.clone());
+    }
 
     // 扩展 PATH，让 dsh 及其子进程能找到 node；Windows 上再注入 Git Bash 的
     // bin 目录：persistent bash（--noprofile --norc）不执行 profile 脚本、PATH
     // 完全继承服务进程，若不含 Git 的 usr/bin，ls/sed/find 等 coreutils 全会
     // `command not found`（MSYS 运行时在部分环境下不会自动补 /usr/bin）。
     if let Some(node_dir) = node_binary_path.parent() {
-        if let Some(existing_path) = std::env::var_os("PATH") {
+        let existing_path = envs
+            .get("PATH")
+            .map(|value| std::ffi::OsString::from(value.as_str()))
+            .or_else(|| std::env::var_os("PATH"));
+        if let Some(existing_path) = existing_path {
             let git_dirs = win_inspector::git_bash_bin_dirs();
             // 只打印注入的前缀目录，完整 PATH 太长会刷屏
             for dir in &git_dirs {
@@ -239,6 +251,13 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
+    let launch_args: Vec<String> = setting
+        .dsh_arguments
+        .iter()
+        .filter(|argument| *argument != "--port" && !argument.starts_with("--port="))
+        .cloned()
+        .collect();
+
     // 日志文件（前端日志面板读取）
     let log_path = config::get_service_log_path(&app_handle);
     fs::create_dir_all(log_path.parent().unwrap_or(std::path::Path::new(".")))
@@ -252,15 +271,10 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
     let spawn_result = {
         #[cfg(windows)]
         {
-            let args: Vec<OsString> = vec![
-                dsh_binary_path.as_os_str().to_os_string(),
-                OsString::from("--profile"),
-                OsString::from("web"),
-                OsString::from("--host"),
-                OsString::from("127.0.0.1"),
-                OsString::from("--port"),
-                OsString::from(setting.port.to_string()),
-            ];
+            let mut args: Vec<OsString> = vec![dsh_binary_path.as_os_str().to_os_string()];
+            args.extend(launch_args.iter().map(|value| OsString::from(value.as_str())));
+            args.push(OsString::from("--port"));
+            args.push(OsString::from(setting.port.to_string()));
             win_spawn::spawn_with_hidden_console(
                 &node_binary_path,
                 &args,
@@ -273,10 +287,7 @@ pub async fn launch(app_handle: tauri::AppHandle) -> Result<(), String> {
         {
             let mut cmd = Command::new(&node_binary_path);
             cmd.arg(&dsh_binary_path)
-                .arg("--profile")
-                .arg("web")
-                .arg("--host")
-                .arg("127.0.0.1")
+                .args(&launch_args)
                 .arg("--port")
                 .arg(&setting.port.to_string())
                 .envs(&envs)

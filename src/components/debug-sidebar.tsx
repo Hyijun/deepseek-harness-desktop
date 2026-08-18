@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ArrowRotateRight, ArrowsRotateRight, ArrowUpRightFromSquare, Copy, Folder, Power } from '@gravity-ui/icons'
+import { ArrowRotateRight, ArrowsRotateRight, ArrowUpRightFromSquare, Copy, Folder, Plus, Power, Xmark } from '@gravity-ui/icons'
 import {
   Button,
   Chip,
@@ -30,9 +30,17 @@ export interface RuntimeInfo {
   arch: string
 }
 
+export interface DshEnvironmentVariable {
+  name: string
+  value: string
+}
+
 export interface AppConfig {
   port: number
   auto_start: boolean
+  http_proxy: string
+  dsh_environment: DshEnvironmentVariable[]
+  dsh_arguments: string[]
   cli_link_enabled: boolean
 }
 
@@ -80,7 +88,11 @@ export default function DebugSidebar() {
   const { serviceRunning, busyAction, preinstall } = useStore(harness)
   const [info, setInfo] = useState<RuntimeInfo | null>(null)
   const [cliLinkEnabled, setCliLinkEnabled] = useState(true)
+  const [autoStart, setAutoStart] = useState(true)
   const [port, setPort] = useState(3080)
+  const [httpProxy, setHttpProxy] = useState('')
+  const [dshEnvironment, setDshEnvironment] = useState<DshEnvironmentVariable[]>([])
+  const [dshArguments, setDshArguments] = useState<string[]>([])
   const [cliStatus, setCliStatus] = useState<CliLinkStatus | null>(null)
   const [logs, setLogs] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
@@ -104,6 +116,10 @@ export default function DebugSidebar() {
     try {
       const nextConfig = await invoke<AppConfig>('get_app_config')
       setPort(nextConfig.port)
+      setAutoStart(nextConfig.auto_start)
+      setHttpProxy(nextConfig.http_proxy ?? '')
+      setDshEnvironment(nextConfig.dsh_environment)
+      setDshArguments(nextConfig.dsh_arguments)
       setCliLinkEnabled(nextConfig.cli_link_enabled)
     }
     catch (err) {
@@ -142,20 +158,31 @@ export default function DebugSidebar() {
     }
   }
 
-  async function savePort() {
+  async function saveSettings() {
     if (busy)
       return
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       toast(t('messages.save_failed'), { variant: 'danger' })
       return
     }
-    setBusy('savePort')
+
+    setBusy('saveSettings')
     try {
-      const nextConfig = await invoke<AppConfig>('update_app_config', { port })
+      const nextConfig = await invoke<AppConfig>('update_app_config', {
+        port,
+        autoStart,
+        httpProxy,
+        dshEnvironment: dshEnvironment.filter(variable => variable.name.trim()),
+        dshArguments: dshArguments.map(argument => argument.trim()).filter(Boolean),
+      })
       setPort(nextConfig.port)
-      toast(t('messages.port_changed'), {
+      setAutoStart(nextConfig.auto_start)
+      setHttpProxy(nextConfig.http_proxy ?? '')
+      setDshEnvironment(nextConfig.dsh_environment)
+      setDshArguments(nextConfig.dsh_arguments)
+      toast(t('messages.settings_changed'), {
         variant: 'accent',
-        description: t('messages.port_restart_hint'),
+        description: t('messages.settings_restart_hint'),
         timeout: 10_000,
         actionProps: {
           children: t('app.restart'),
@@ -164,7 +191,7 @@ export default function DebugSidebar() {
       })
     }
     catch (err) {
-      console.error('[DebugSidebar] failed to save port:', err)
+      console.error('[DebugSidebar] failed to save settings:', err)
       toast(t('messages.save_failed'), { variant: 'danger' })
     }
     finally {
@@ -393,7 +420,22 @@ export default function DebugSidebar() {
               <SectionCard>
                 <SectionTitle>{t('ui.settings')}</SectionTitle>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-ink">{t('ui.auto_start')}</span>
+                    <Switch
+                      isSelected={autoStart}
+                      isDisabled={busy === 'saveSettings'}
+                      onChange={setAutoStart}
+                    >
+                      <Switch.Content>
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                      </Switch.Content>
+                    </Switch>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-ink">{t('ui.cli_link_enabled')}</span>
                     <Switch
@@ -407,7 +449,6 @@ export default function DebugSidebar() {
                         </Switch.Control>
                       </Switch.Content>
                     </Switch>
-
                   </div>
 
                   {cliStatus && (
@@ -420,28 +461,138 @@ export default function DebugSidebar() {
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="space-y-1">
                     <span className="text-xs font-medium text-ink">{t('ui.port')}</span>
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        type="number"
-                        variant="secondary"
-                        value={String(port)}
-                        onChange={e => setPort(Number(e.target.value))}
-                        className="w-24 rounded-md"
-                        aria-label={t('ui.port')}
-                      />
+                    <Input
+                      type="number"
+                      variant="secondary"
+                      value={String(port)}
+                      onChange={e => setPort(Number(e.target.value))}
+                      className="rounded-md"
+                      aria-label={t('ui.port')}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium text-ink">{t('ui.http_proxy')}</span>
+                    <Input
+                      variant="secondary"
+                      value={httpProxy}
+                      onChange={e => setHttpProxy(e.target.value)}
+                      placeholder={t('ui.http_proxy_placeholder')}
+                      className="rounded-md font-mono text-xs"
+                      aria-label={t('ui.http_proxy')}
+                    />
+                    <p className="text-[11px] leading-relaxed text-muted">{t('ui.http_proxy_hint')}</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-ink">{t('ui.dsh_environment')}</span>
                       <Button
                         size="sm"
-                        variant="primary"
-                        className="rounded-md"
-                        onPress={savePort}
-                        isDisabled={busy === 'savePort'}
+                        variant="ghost"
+                        isIconOnly
+                        className="size-6 min-w-6"
+                        aria-label={t('buttons.add')}
+                        onPress={() => setDshEnvironment([...dshEnvironment, { name: '', value: '' }])}
+                        isDisabled={busy === 'saveSettings'}
                       >
-                        {busy === 'savePort' ? <Spinner size="sm" color="current" /> : t('buttons.save')}
+                        <Plus className="size-3.5" />
                       </Button>
                     </div>
+                    <div className="space-y-1.5">
+                      {dshEnvironment.map((variable, index) => (
+                        <div className="flex items-center gap-1.5" key={`env-${index}`}>
+                          <Input
+                            variant="secondary"
+                            value={variable.name}
+                            onChange={e => setDshEnvironment(dshEnvironment.map((item, itemIndex) => itemIndex === index ? { ...item, name: e.target.value } : item))}
+                            placeholder={t('ui.name')}
+                            aria-label={`${t('ui.name')} ${index + 1}`}
+                            className="min-w-0 flex-1 rounded-md font-mono text-xs"
+                            disabled={busy === 'saveSettings'}
+                          />
+                          <Input
+                            variant="secondary"
+                            value={variable.value}
+                            onChange={e => setDshEnvironment(dshEnvironment.map((item, itemIndex) => itemIndex === index ? { ...item, value: e.target.value } : item))}
+                            placeholder={t('ui.value')}
+                            aria-label={`${t('ui.value')} ${index + 1}`}
+                            className="min-w-0 flex-1 rounded-md font-mono text-xs"
+                            disabled={busy === 'saveSettings'}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            isIconOnly
+                            className="size-7 min-w-7 text-muted hover:text-danger"
+                            aria-label={t('buttons.remove')}
+                            onPress={() => setDshEnvironment(dshEnvironment.filter((_, itemIndex) => itemIndex !== index))}
+                            isDisabled={busy === 'saveSettings'}
+                          >
+                            <Xmark className="size-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-muted">{t('ui.dsh_environment_hint')}</p>
                   </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-ink">{t('ui.dsh_arguments')}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        isIconOnly
+                        className="size-6 min-w-6"
+                        aria-label={t('buttons.add')}
+                        onPress={() => setDshArguments([...dshArguments, ''])}
+                        isDisabled={busy === 'saveSettings'}
+                      >
+                        <Plus className="size-3.5" />
+                      </Button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {dshArguments.map((argument, index) => (
+                        <div className="flex items-center gap-1.5" key={`arg-${index}`}>
+                          <Input
+                            variant="secondary"
+                            value={argument}
+                            onChange={e => setDshArguments(dshArguments.map((item, itemIndex) => itemIndex === index ? e.target.value : item))}
+                            placeholder={t('ui.value')}
+                            aria-label={`${t('ui.value')} ${index + 1}`}
+                            className="min-w-0 flex-1 rounded-md font-mono text-xs"
+                            disabled={busy === 'saveSettings'}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            isIconOnly
+                            className="size-7 min-w-7 text-muted hover:text-danger"
+                            aria-label={t('buttons.remove')}
+                            onPress={() => setDshArguments(dshArguments.filter((_, itemIndex) => itemIndex !== index))}
+                            isDisabled={busy === 'saveSettings'}
+                          >
+                            <Xmark className="size-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-muted">{t('ui.dsh_arguments_hint')}</p>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    fullWidth
+                    className="rounded-md"
+                    onPress={saveSettings}
+                    isDisabled={busy === 'saveSettings'}
+                  >
+                    {busy === 'saveSettings' ? <Spinner size="sm" color="current" /> : t('buttons.save')}
+                  </Button>
 
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-ink">{t('ui.language')}</span>

@@ -9,6 +9,7 @@ import { harness } from '../store/modules/harness'
 import Loadable from './loadable'
 import PreinstallSetup from './preinstall-setup'
 import Setup from './setup'
+import WindowTitlebar from './window-titlebar'
 
 /**
  * 主区域视图：安装/错误态渲染 Setup，
@@ -34,6 +35,7 @@ export default function HarnessWebview() {
   if (status === 'error') {
     return (
       <main className="relative flex-1 bg-canvas">
+        <WindowTitlebar />
         <Setup />
       </main>
     )
@@ -43,6 +45,7 @@ export default function HarnessWebview() {
   if (status === 'preinstall') {
     return (
       <main className="relative w-full bg-canvas">
+        <WindowTitlebar />
         <PreinstallSetup />
       </main>
     )
@@ -51,6 +54,7 @@ export default function HarnessWebview() {
   if (status !== 'ready') {
     return (
       <main className="relative w-full bg-canvas">
+        <WindowTitlebar />
         <Setup />
       </main>
     )
@@ -58,6 +62,7 @@ export default function HarnessWebview() {
 
   return (
     <main className="relative flex-1 bg-canvas">
+      {!dragBridge.ready && <WindowTitlebar />}
       {serviceHealthy
         ? (
             <iframe

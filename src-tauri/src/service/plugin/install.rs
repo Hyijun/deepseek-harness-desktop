@@ -12,7 +12,7 @@ use std::ffi::OsString;
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 use super::installed::PREINSTALL_PROFILE;
-use super::preset::load_presets;
+use super::preset::{load_presets, PreinstallPluginInfo};
 use super::process::{run_plugin_process, PreinstallLogPayload, PREINSTALL_LOG_EVENT};
 
 /// 校验并安装选中的预装插件：`dsh plugin --profile web add <ids...>`
@@ -23,14 +23,28 @@ pub async fn install(app_handle: &AppHandle, ids: &[String]) -> Result<(), Strin
 
     // 单次读取预设并构建查找表，提升算法效率至 O(N)
     let presets = load_presets(app_handle);
-    let preset_map: HashMap<&str, &str> = presets.iter().map(|p| (p.id.as_str(), p.spec.as_str())).collect();
+    let preset_map: HashMap<&str, &PreinstallPluginInfo> =
+        presets.iter().map(|p| (p.id.as_str(), p)).collect();
 
+    // 内置插件（builtin）随桌面二进制自部署，不经过 `dsh plugin add`，
+    // 此处直接跳过，避免对其发起无 GitHub 源的网络安装。
     let mut specs = Vec::with_capacity(ids.len());
+    let mut installable = Vec::with_capacity(ids.len());
     for id in ids {
-        let spec = preset_map
+        let preset = preset_map
             .get(id.as_str())
             .ok_or_else(|| format!("PREINSTALL_INVALID_ID: {id}"))?;
-        specs.push(spec.to_string());
+        if preset.builtin {
+            log::info!("Skipping builtin plugin {id} (deployed from the desktop bundle)");
+            continue;
+        }
+        specs.push(preset.spec.clone());
+        installable.push(id.clone());
+    }
+
+    if specs.is_empty() {
+        log::info!("Only builtin plugins selected, nothing to install");
+        return Ok(());
     }
 
     // 确保 pnpm/dsh shim 存在
@@ -89,7 +103,7 @@ pub async fn install(app_handle: &AppHandle, ids: &[String]) -> Result<(), Strin
     args.extend(specs.into_iter().map(OsString::from));
 
     let cwd = config::get_dsh_install_path(app_handle);
-    log::info!("Running dsh plugin install for {ids:?}");
+    log::info!("Running dsh plugin install for {installable:?}");
 
     let exit_code = run_plugin_process(&node, &args, &cwd, &envs, &window).await?;
     if exit_code != 0 {
@@ -98,13 +112,13 @@ pub async fn install(app_handle: &AppHandle, ids: &[String]) -> Result<(), Strin
     }
 
     // Windows 极简模式专项修复
-    if ids.iter().any(|id| id == "dsh-win-terminal-inspector") {
+    if installable.iter().any(|id| id == "dsh-win-terminal-inspector") {
         if let Err(e) = workflow::win_inspector::apply(app_handle) {
             log::warn!("win inspector apply failed after install: {e}");
         }
     }
 
-    log::info!("Preinstall plugins installed successfully: {ids:?}");
+    log::info!("Preinstall plugins installed successfully: {installable:?}");
     Ok(())
 }
 

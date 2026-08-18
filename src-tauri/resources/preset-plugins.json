@@ -1,5 +1,13 @@
 [
   {
+    "id": "@deepseek-harness-desktop/dsh-window-drag-bridge",
+    "spec": "@deepseek-harness-desktop/dsh-window-drag-bridge",
+    "name": "Desktop Window Drag Bridge",
+    "description": "Bundled desktop bridge: window drag/minimize/hide, native notifications and clipboard copy inside the Harness page. · 桌面端内置桥：Harness 页面内的窗口拖拽/最小化/隐藏、原生通知与剪贴板复制。",
+    "repoUrl": "",
+    "builtin": true
+  },
+  {
     "id": "dsh-win-terminal-inspector",
     "spec": "github:clearkurt/dsh-win-terminal-inspector",
     "name": "Windows Terminal Inspector",

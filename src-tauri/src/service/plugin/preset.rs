@@ -30,6 +30,10 @@ pub struct PreinstallPluginInfo {
     /// 仅 Windows 平台列出
     #[serde(default)]
     pub win_only: bool,
+    /// 桌面端内置插件：随二进制自部署（`service::workflow::desktop_plugin`），
+    /// 不经过 `dsh plugin add`，前端只读展示、不可勾选
+    #[serde(default)]
+    pub builtin: bool,
 }
 
 /// 定位预设插件清单文件：优先使用随安装包分发的资源目录，回落到源码开发目录

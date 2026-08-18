@@ -20,7 +20,6 @@ const HIDE_MESSAGE = `${BRIDGE_PREFIX}hide-window`
 const NOTIFICATION_MESSAGE = `${BRIDGE_PREFIX}show-native-notification`
 const CLIPBOARD_WRITE_MESSAGE = `${BRIDGE_PREFIX}write-native-clipboard`
 const CLIPBOARD_WRITE_RESULT_MESSAGE = `${BRIDGE_PREFIX}native-clipboard-write-result`
-const TOGGLE_SIDEBAR_MESSAGE = `${BRIDGE_PREFIX}toggle-sidebar`
 const READY_MESSAGE = `${BRIDGE_PREFIX}drag-bridge-ready`
 
 /** 插件应在 iframe 加载后这段时间内完成 slot 挂载并发送 ready 心跳 */
@@ -49,6 +48,7 @@ export function useDesktopBridge(
 ) {
   const isMounted = useMountedState()
   const [failed, setFailed] = useState(false)
+  const [ready, setReady] = useState(false)
   const readyRef = useRef(false)
   const timeoutRef = useRef<number | null>(null)
 
@@ -109,6 +109,7 @@ export function useDesktopBridge(
     switch (data.type) {
       case READY_MESSAGE:
         readyRef.current = true
+        setReady(true)
         clearTimeoutRef()
         setFailed(false)
         return
@@ -122,11 +123,6 @@ export function useDesktopBridge(
           console.error('[desktop-window-drag] failed to minimize window:', error)
         })
         return
-      case HIDE_MESSAGE:
-        void appWindow.hide().catch((error: unknown) => {
-          console.error('[desktop-window-drag] failed to hide window:', error)
-        })
-        return
       case TOGGLE_MAXIMIZE_MESSAGE:
         void appWindow
           .isMaximized()
@@ -134,6 +130,11 @@ export function useDesktopBridge(
           .catch((error: unknown) => {
             console.error('[desktop-window-drag] failed to toggle window maximize:', error)
           })
+        return
+      case HIDE_MESSAGE:
+        void appWindow.hide().catch((error: unknown) => {
+          console.error('[desktop-window-drag] failed to hide window:', error)
+        })
         return
       case NOTIFICATION_MESSAGE:
         void invoke('show_native_notification', {
@@ -171,11 +172,6 @@ export function useDesktopBridge(
           },
         )
         return
-      case TOGGLE_SIDEBAR_MESSAGE:
-        void invoke('toggle_sidebar').catch((error: unknown) => {
-          console.error('[desktop-window-drag] failed to toggle sidebar:', error)
-        })
-        return
       default:
         return
     }
@@ -186,6 +182,7 @@ export function useDesktopBridge(
   // iframe 实例变化（刷新/重挂载）时重置 ready 与 watchdog
   useEffect(() => {
     readyRef.current = false
+    setReady(false)
     setFailed(false)
     clearTimeoutRef()
     return clearTimeoutRef
@@ -201,5 +198,5 @@ export function useDesktopBridge(
     [],
   )
 
-  return { failed, notifyLoaded, cancelWatchdog }
+  return { failed, ready, notifyLoaded, cancelWatchdog }
 }

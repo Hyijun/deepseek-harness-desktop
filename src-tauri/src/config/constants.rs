@@ -38,8 +38,6 @@ pub const DSH_DATA_DIR_NAME: &str = "dsh";
 
 /// 安装目录中的应用设置文件
 pub const STORE_DAT_FILE: &str = ".store.dat";
-/// 应用设置在 store 文件中的键名
-pub const STORE_SETTING_KEY: &str = "setting";
 
 /// 健康检查超时
 pub const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
